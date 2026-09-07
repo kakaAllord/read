@@ -1,0 +1,7 @@
+/* One entry point, so the cascade order is explicit: Tailwind's reset first,
+   then the design system, then the themes that retune its tokens, then the
+   app's own rules. */
+@import "tailwindcss";
+@import "./ds.css";
+@import "./themes.css";
+@import "./app.css";

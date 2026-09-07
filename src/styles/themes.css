@@ -1,0 +1,91 @@
+/* Reading themes.
+   The default is the Classical system exactly as the mockup draws it: nothing
+   here changes it. Sepia and dark are retunings of the same tokens, so every
+   component in ds.css and every inline style transcribed from the artboard
+   follows without being touched.
+
+   Two tokens are lifted out of the artboard's inline styles so themes can
+   reach them. In the default theme they hold the literal values the mockup
+   used, so the default renders identically. */
+:root {
+  --color-page: #fbfaf8;               /* the page card in the reader */
+  --color-reader-ground: var(--color-neutral-200); /* the pane behind it */
+  --reader-text: 15.5px;               /* body size of reflowed book text */
+  color-scheme: light;
+}
+
+/* — sepia — the same warmth pushed into the paper rather than the ink — */
+:root[data-theme="sepia"] {
+  --color-bg: #ece2d0;
+  --color-surface: #e0d4bd;
+  --color-text: #2b2317;
+  --color-accent: #9c6a24;
+  --color-accent-2: #96702f;
+  --color-divider: color-mix(in srgb, #2b2317 18%, transparent);
+
+  --color-neutral-100: #fbf5e8;
+  --color-neutral-200: #eee4d0;
+  --color-neutral-300: #ddd0b8;
+  --color-neutral-400: #c3b498;
+  --color-neutral-500: #a5957a;
+  --color-neutral-600: #86775f;
+  --color-neutral-700: #665a47;
+  --color-neutral-800: #494030;
+  --color-neutral-900: #2f291e;
+
+  --color-accent-100: #fdf0dc;
+  --color-accent-200: #f7dfb7;
+  --color-accent-300: #eec689;
+  --color-accent-400: #d5a862;
+  --color-accent-500: #b6883e;
+  --color-accent-600: #956a22;
+  --color-accent-700: #745010;
+  --color-accent-800: #533809;
+  --color-accent-900: #35250c;
+
+  --color-page: #fdf6e6;
+  --color-reader-ground: #e4d8c2;
+  color-scheme: light;
+}
+
+/* — dark — the ramps invert, so 100 is the deepest step and 900 the lightest.
+   Every ds.css rule that leans on the ramp keeps its meaning: a 300 is still
+   a quiet fill and a 700 still carries text. — */
+:root[data-theme="dark"] {
+  --color-bg: #1a1918;
+  --color-surface: #232120;
+  --color-text: #e9e4dc;
+  --color-accent: #d3a05c;
+  --color-accent-2: #c99a5c;
+  --color-divider: color-mix(in srgb, #e9e4dc 17%, transparent);
+
+  --color-neutral-100: #151413;
+  --color-neutral-200: #232120;
+  --color-neutral-300: #302d2c;
+  --color-neutral-400: #5a5651;
+  --color-neutral-500: #837e77;
+  --color-neutral-600: #a39d95;
+  --color-neutral-700: #c0bab1;
+  --color-neutral-800: #d8d2c9;
+  --color-neutral-900: #efe9e0;
+
+  --color-accent-100: #2a1e0d;
+  --color-accent-200: #3d2c13;
+  --color-accent-300: #6d4f22;
+  --color-accent-400: #8d6830;
+  --color-accent-500: #b08543;
+  --color-accent-600: #cb9d55;
+  --color-accent-700: #e5c187;
+  --color-accent-800: #f2d9ac;
+  --color-accent-900: #f9ead0;
+
+  --color-page: #232120;
+  --color-reader-ground: #131211;
+  color-scheme: dark;
+}
+
+/* The scrim is the one place the neutral ramp is asked for a shadow rather
+   than a surface, so it is named directly instead of following the inversion. */
+:root[data-theme="dark"] .dialog-backdrop {
+  background: color-mix(in srgb, #000 62%, transparent);
+}

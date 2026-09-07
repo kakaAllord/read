@@ -1,0 +1,84 @@
+/* Transcribed from the artboard's <style> block, unchanged. */
+html, body { height: 100%; margin: 0; }
+#root { height: 100%; }
+a { color: var(--color-accent); }
+a:hover { color: var(--color-accent-700); }
+@keyframes rec { 0%,100% { opacity: .3 } 50% { opacity: 1 } }
+@keyframes rise { from { opacity: 0; transform: translateY(9px) } to { opacity: 1; transform: none } }
+@keyframes grow { from { transform: scaleY(0); } to { transform: none } }
+@keyframes breathe { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
+.rise { animation: rise .5s cubic-bezier(.2,.7,.3,1) both; }
+.row { transition: background .18s ease, padding-left .18s ease; }
+.row:hover { background: color-mix(in srgb, var(--color-accent) 7%, transparent); padding-left: 8px; }
+.lift { transition: transform .25s cubic-bezier(.2,.7,.3,1), opacity .25s ease; }
+.lift:hover { transform: translateY(-3px); }
+.bar { transform-origin: bottom; animation: grow .7s cubic-bezier(.2,.7,.3,1) both; transition: background .2s ease; }
+.bar:hover { background: var(--color-accent) !important; }
+.chip { transition: background .2s ease, border-color .2s ease, color .2s ease; }
+.chip:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); border-color: var(--color-accent); }
+.dimmable { transition: opacity .6s ease; }
+.dimmable:hover { opacity: 1 !important; }
+
+/* — additions the artboard does not draw — */
+
+/* Reflowed book text. Size is a token so the reading controls can step it;
+   the default value is the 15.5px the mockup sets. */
+.book-p {
+  font-size: var(--reader-text);
+  line-height: 1.78;
+  text-align: justify;
+  hyphens: auto;
+  margin: 0 0 15px;
+}
+.book-h {
+  font-weight: 400;
+  font-size: calc(var(--reader-text) * 1.548);
+  margin: 0 0 20px;
+  letter-spacing: 0.01em;
+}
+.book-p::selection, .book-h::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+
+/* The reading-controls popover, built from the same parts as the artboard's
+   .chip and .dialog: a hairline border, a surface fill, small caps labels. */
+.rc-pop {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 40;
+  width: 232px; padding: 14px 16px 15px;
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+.rc-label {
+  font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  margin-bottom: 7px;
+}
+.rc-steps { display: flex; gap: 6px; }
+.rc-step {
+  flex: 1; padding: 5px 0; cursor: pointer; background: transparent;
+  border: 1px solid var(--color-divider); border-radius: var(--radius-sm);
+  font-family: var(--font-body); color: var(--color-text);
+  line-height: 1; text-align: center;
+}
+.rc-step:hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.rc-step[aria-pressed="true"] {
+  border-color: var(--color-accent); color: var(--color-accent-700);
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+.rc-swatch {
+  width: 18px; height: 18px; border-radius: 50%; flex: none;
+  border: 1px solid var(--color-divider);
+}
+
+/* The passage a selection is anchored to, once an entry exists against it.
+   Same fill and 5px bleed the artboard uses on a highlighted paragraph. */
+.marked {
+  background: color-mix(in srgb, var(--color-accent) 13%, transparent);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 13%, transparent);
+}
+
+/* Page mode: the PDF drawn to canvas, in the same card the reflow mode uses. */
+.page-canvas { display: block; width: 100%; height: auto; }
+
+.spin { animation: breathe 1.6s ease-in-out infinite; }
