@@ -6,7 +6,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 export function openPdf(data: ArrayBuffer): Promise<PDFDocumentProxy> {
   /* pdf.js transfers the buffer to the worker, so hand it a copy — the same
-     bytes are wanted again for the Drive upload and the cache. */
+     bytes are wanted again for the upload and the cache. */
   return pdfjs.getDocument({ data: data.slice(0) }).promise;
 }
 

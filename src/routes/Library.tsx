@@ -103,26 +103,9 @@ export default function Library() {
           }}
         >
           <h1 style={{ fontWeight: 400, fontSize: 44, margin: 0 }}>Library</h1>
-          <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-            <div
-              onClick={() => {
-                setDialogFile(null);
-                setDialogOpen(true);
-              }}
-              style={{
-                fontSize: 12,
-                color: "var(--color-accent-700)",
-                cursor: "pointer",
-                textDecoration: "underline",
-                textUnderlineOffset: 3,
-              }}
-            >
-              Add from Drive
-            </div>
-            <button className="btn btn-primary" onClick={openDialog}>
-              Upload a book
-            </button>
-          </div>
+          <button className="btn btn-primary" onClick={openDialog}>
+            Upload a book
+          </button>
         </div>
 
         <input

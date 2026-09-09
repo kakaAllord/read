@@ -3,7 +3,7 @@ export type BookFormat = "pdf" | "epub";
 
 export type Book = {
   id: string;
-  driveFileId: string;
+  fileKey: string; // "gh:books/faith/mere-christianity.pdf", or "local:<id>"
   format: BookFormat;
   viewMode: ViewMode;
   title: string;

@@ -4,61 +4,73 @@ A room to think in. You read a book in the left pane, select a passage, press
 `E`, and write about it in the right. Entries stay anchored to the passage that
 prompted them.
 
-Single user, no backend. Everything runs in the browser; Google Drive holds the
-files.
+Single user, no backend. Everything runs in the browser; a private GitHub repo
+holds the files.
 
 ```
 npm install
-npm run dev          # http://localhost:5173
+npm run dev          # http://localhost:4001
 npm run build
 npm run typecheck
 ```
 
-## Setting up Drive
+## Connecting a repository
 
-The app works without any of this — books and entries live in IndexedDB and
-nothing leaves the machine. Drive is what makes the writing outlive the app.
+The app works without one — books and entries live in IndexedDB and nothing
+leaves the machine. The repo is what makes the writing outlive the app, and what
+puts the same journal in front of you on a different device.
 
-1. In the [Google Cloud console](https://console.cloud.google.com/), create a
-   project and enable the **Google Drive API**. Enable the **Google Picker API**
-   too if you want the *Add from Drive* path.
-2. On the OAuth consent screen, add yourself as a test user. The only scope the
-   app asks for is `drive.file`, which is non-sensitive — no verification and no
-   CASA assessment. Do **not** add `drive` or `drive.readonly`.
-3. Create an **OAuth 2.0 Client ID** of type *Web application*. Under
-   *Authorized JavaScript origins* add `http://localhost:5173` and, once
-   deployed, your Vercel domain.
-4. For the Picker only, create an **API key** and restrict it to the Picker API.
-5. Copy `.env.example` to `.env` and fill in:
+1. Make a repository. Private, empty, no README needed.
+2. Make a [fine-grained token](https://github.com/settings/personal-access-tokens/new).
+   Under *Repository access* choose **Only select repositories** and pick that
+   one. Under *Repository permissions* set **Contents: Read and write**. Nothing
+   else — no other permission is used.
+3. Click **Local only** in the header, put in `owner/name` and the token, and
+   press Connect.
 
-```
-VITE_GOOGLE_CLIENT_ID=…apps.googleusercontent.com
-VITE_GOOGLE_API_KEY=…            # optional; only "Add from Drive" needs it
-```
+There is no build-time configuration and no OAuth app: the token is checked
+against the repo before it is stored, then kept in this browser's
+`localStorage`. That is also the thing to be careful about — anyone with the
+browser profile has the token, so give it an expiry date and keep the repo
+private. Connecting the same repo somewhere else pulls the journal down; the
+newer copy of an entry wins, so a note written offline is never overwritten by a
+stale one.
 
-Then click **Sign in** in the header. Until you do, the header reads *Local
-only*.
-
-### What lands in Drive
+### What lands in the repo
 
 ```
-read/
-  library.json          the book catalog
-  books/                the uploaded files
-  journal/
-    2026-09.md          one file per month
+library.json          the book catalog
+books/
+  faith/
+    mere-christianity.pdf
+  detective/
+    the-hound-of-the-baskervilles.epub
+journal/
+  2026-09.md          one file per month
 ```
+
+The genre typed into the Add dialog is the folder the file goes in, lowercased
+and hyphenated. It is settled at import: renaming a genre later moves the book
+on the shelf but leaves the file where it was put.
 
 The journal files are markdown you can read without this app. Each entry keeps
 its fields in an HTML comment above the body so it can be read back in; the body
-below is exactly as it was written.
+below is exactly as it was written. Every save is a commit, so `git log` is a
+record of the reading as well as a backup of it.
+
+**What it will not take.** GitHub warns over 50MB a file and blocks at 100MB,
+and the Contents API carries a file as base64 in one JSON body, so the ceiling
+here is about 45MB. A big scan has to be compressed before it will go up. Git
+also keeps every version forever: books are written once so that costs nothing,
+but it is worth knowing that deleting a book from the repo does not shrink it.
 
 ## Deploying
 
 Static build. On Vercel the defaults are right (`npm run build` → `dist`);
 `vercel.json` rewrites every path to `index.html` so `/book/:id` survives a
-refresh. Add the deployed origin to the OAuth client's authorized origins, and
-set the two environment variables in the project settings.
+refresh. There is nothing to configure — no environment variables, no origins to
+register. Open the deployed app, connect the same repo, and the library is
+there.
 
 ## How it fits together
 
@@ -68,7 +80,10 @@ src/
   components/     the pieces those screens are built from
   lib/
     text/         PDF and EPUB extraction, view-mode detection, covers
-    drive/        auth, REST client, Picker, cache, sync
+    github/       config, the Contents API client, repo paths
+    sync.ts       what gets written up, when, and what comes back down
+    journalFile.ts  the markdown a month is rendered to and parsed from
+    cache.ts      book bytes, kept in Cache Storage
     anchors.ts    turning a selection into an anchor, and finding it again
     db.ts         Dexie schema
 ```
@@ -94,12 +109,14 @@ gap over 1.4× the median, an indent, or a short previous line. It de-hyphenates
 line breaks, strips running heads and folios, and treats oversized lines as
 headings. EPUB skips all of this — it is already semantic HTML.
 
-**Sync.** IndexedDB is the working copy the interface reads from. Drive is the
-durable store, written through on save and debounced. A month is one file, so
-saving an entry does not rewrite the journal. Tokens last about an hour with no
-refresh token, so every call catches a 401, asks for a new token silently, and
-retries once; because a book's bytes are cached in Cache Storage, reading
-continues through that and only saving waits.
+**Sync.** IndexedDB is the working copy the interface reads from. The repo is
+the durable store, written through on save and debounced. A month is one file,
+so saving an entry does not rewrite the journal. Every write quotes the blob
+sha it read, which is how GitHub says "the version I read is the version I am
+replacing" — a stale sha comes back as a 409, and that is the signal another
+device wrote first, so the sha is refetched and the write retried once. A
+book's bytes are cached in Cache Storage, so reading carries on through a
+failed save.
 
 ## Keys
 

@@ -53,7 +53,7 @@ export default function Reader() {
      the live query hands back a fresh object several times a minute. These
      effects therefore hang off the identity of the *file*, not the record;
      depending on `book` would re-extract the whole text on every scroll. */
-  const fileKey = book ? `${book.id}|${book.format}|${book.driveFileId}` : "";
+  const identity = book ? `${book.id}|${book.format}|${book.fileKey}` : "";
   const viewMode = book?.viewMode;
   const bookRef = useRef(book);
   bookRef.current = book;
@@ -74,7 +74,7 @@ export default function Reader() {
     return () => {
       live = false;
     };
-  }, [fileKey]);
+  }, [identity]);
 
   useEffect(() => {
     const current = bookRef.current;
@@ -89,7 +89,7 @@ export default function Reader() {
     return () => {
       live = false;
     };
-  }, [fileKey, viewMode]);
+  }, [identity, viewMode]);
 
   /* Resume where the book was left, once, after the text is in. */
   useEffect(() => {

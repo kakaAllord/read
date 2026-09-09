@@ -7,7 +7,7 @@ import { localDayKey, streakFrom } from "./lib/dates";
 import Dashboard from "./routes/Dashboard";
 import Library from "./routes/Library";
 import Reader from "./routes/Reader";
-import DriveStatus from "./components/DriveStatus";
+import RepoStatus from "./components/RepoStatus";
 
 const muted = (pct: number) => `color-mix(in srgb, var(--color-text) ${pct}%, transparent)`;
 
@@ -90,7 +90,7 @@ export default function App() {
         >
           Library
         </div>
-        <DriveStatus />
+        <RepoStatus />
         <div
           style={{
             fontSize: 12,

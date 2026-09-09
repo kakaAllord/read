@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-import { commitBook, probeDriveFile, probeFile, type Probe } from "../lib/store";
-import { driveConfigured, isSignedIn, signIn } from "../lib/drive/auth";
-import { pickFromDrive } from "../lib/drive/picker";
+import { commitBook, probeFile, type Probe } from "../lib/store";
+import { connected } from "../lib/github/config";
+import { genreDir } from "../lib/github/paths";
 import type { ViewMode } from "../lib/types";
 
 const muted = (pct: number) => `color-mix(in srgb, var(--color-text) ${pct}%, transparent)`;
@@ -57,40 +57,11 @@ export default function AddBookDialog({ file, onClose, onAdded, onPickFile }: Pr
       });
   }, [file]);
 
-  async function fromDrive() {
-    const mine = ++token.current;
-    setError(null);
-    try {
-      if (!driveConfigured) throw new Error("Set VITE_GOOGLE_CLIENT_ID in .env first.");
-      if (!isSignedIn()) await signIn();
-      const doc = await pickFromDrive();
-      if (!doc || token.current !== mine) return;
-      setFraction(0);
-      setStatus("Reading the file");
-      const p = await probeDriveFile(doc.id, (f, label) => {
-        if (token.current !== mine) return;
-        setFraction(f);
-        setStatus(label);
-      });
-      if (token.current !== mine) return;
-      setProbe(p);
-      setMode(p.verdict.mode);
-      setTitle(p.title);
-      setAuthor(p.author ?? "");
-      setStatus(null);
-      setFraction(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setStatus(null);
-      setFraction(null);
-    }
-  }
-
   async function add() {
     if (!probe || saving) return;
     setSaving(true);
     setError(null);
-    setStatus(isSignedIn() ? "Uploading to Drive" : "Saving");
+    setStatus(connected() ? "Pushing to the repository" : "Saving");
     setFraction(0);
     try {
       const book = await commitBook({ ...probe, verdict: { ...probe.verdict, mode } }, {
@@ -138,31 +109,18 @@ export default function AddBookDialog({ file, onClose, onAdded, onPickFile }: Pr
         )}
 
         {!probe && !status && (
-          <div style={{ display: "flex", gap: 18, alignItems: "center" }}>
-            <div
-              onClick={onPickFile}
-              style={{
-                fontSize: 12,
-                color: "var(--color-accent-700)",
-                cursor: "pointer",
-                textDecoration: "underline",
-                textUnderlineOffset: 3,
-              }}
-            >
-              Choose a file
-            </div>
-            <div
-              onClick={() => void fromDrive()}
-              style={{
-                fontSize: 12,
-                color: "var(--color-accent-700)",
-                cursor: "pointer",
-                textDecoration: "underline",
-                textUnderlineOffset: 3,
-              }}
-            >
-              Add from Drive
-            </div>
+          <div
+            onClick={onPickFile}
+            style={{
+              fontSize: 12,
+              color: "var(--color-accent-700)",
+              cursor: "pointer",
+              textDecoration: "underline",
+              textUnderlineOffset: 3,
+              width: "fit-content",
+            }}
+          >
+            Choose a file
           </div>
         )}
 
@@ -182,6 +140,13 @@ export default function AddBookDialog({ file, onClose, onAdded, onPickFile }: Pr
             onChange={(e) => setGenre(e.target.value)}
             placeholder="faith, leadership, detective…"
           />
+          {/* The genre is a folder name in the repo, not just a heading on
+              the shelf, so it is worth saying where the file lands. */}
+          <div style={{ fontSize: 11, lineHeight: 1.6, color: muted(48), marginTop: 4 }}>
+            {connected()
+              ? `Filed under ${genreDir(genre.trim() || "unfiled")}/ in the repository.`
+              : "Connect a repository to keep a copy outside this browser."}
+          </div>
         </div>
 
         {/* Which of the two view modes the book landed in, and why — with the

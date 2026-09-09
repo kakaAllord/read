@@ -8,10 +8,10 @@ import { extractPdf } from "./text/pdfExtract";
 import { extractEpub } from "./text/epubExtract";
 import { detectMode, type ModeVerdict } from "./text/modeDetect";
 import { coverFromPdf } from "./text/cover";
-import { cacheBook, cachedBook } from "./drive/cache";
-import { getFileBytes, getFileMeta } from "./drive/api";
-import { driveConfigured, isSignedIn } from "./drive/auth";
-import { noteEntrySaved, pushLibrary, uploadBookFile } from "./drive/sync";
+import { cacheBook, cachedBook } from "./cache";
+import { connected } from "./github/config";
+import { pathOf } from "./github/paths";
+import { fetchBook, noteEntrySaved, pushLibrary, uploadBook } from "./sync";
 import type { Anchor, Book, BookFormat, BookText, Entry } from "./types";
 
 export type Probe = {
@@ -24,7 +24,6 @@ export type Probe = {
   coverDataUrl?: string;
   text: BookText;
   verdict: ModeVerdict;
-  driveFileId?: string; // set when the file came from the Picker
 };
 
 function titleFromFileName(name: string): string {
@@ -119,28 +118,29 @@ export async function commitBook(
   fields: BookFields,
   onProgress?: (fraction: number) => void,
 ): Promise<Book> {
-  let driveFileId = probe.driveFileId ?? "";
+  const title = fields.title.trim() || probe.title;
+  const genre = (fields.genre.trim() || "unfiled").toLowerCase();
 
-  if (!driveFileId && driveConfigured && isSignedIn()) {
-    const blob = new File([probe.bytes.slice(0)], probe.fileName, {
-      type: probe.format === "pdf" ? "application/pdf" : "application/epub+zip",
-    });
-    driveFileId = await uploadBookFile(blob, onProgress);
+  /* The genre decides the folder, so it is settled before the upload rather
+     than after: books/faith/mere-christianity.pdf. */
+  let fileKey = "";
+  if (connected()) {
+    fileKey = await uploadBook(probe.bytes, { title, genre, format: probe.format }, onProgress);
   } else {
     onProgress?.(1);
   }
 
-  const key = driveFileId || `local:${probe.text.bookId}`;
+  const key = fileKey || `local:${probe.text.bookId}`;
   await cacheBook(key, probe.bytes);
 
   const book: Book = {
     id: probe.text.bookId,
-    driveFileId: key,
+    fileKey: key,
     format: probe.format,
     viewMode: probe.verdict.mode,
-    title: fields.title.trim() || probe.title,
+    title,
     author: fields.author.trim() || probe.author,
-    genre: (fields.genre.trim() || "unfiled").toLowerCase(),
+    genre,
     coverDataUrl: probe.coverDataUrl,
     pageCount: probe.pageCount,
     lastLocation: 0,
@@ -153,7 +153,7 @@ export async function commitBook(
   return book;
 }
 
-/** The extraction, from the local cache if it is there and Drive if not. */
+/** The extraction, from the local cache if it is there and the repo if not. */
 export async function loadBookText(book: Book): Promise<BookText> {
   const stored = await db.texts.get(book.id);
   if (stored) return stored;
@@ -171,37 +171,17 @@ export async function loadBookText(book: Book): Promise<BookText> {
 }
 
 export async function loadBookBytes(book: Book): Promise<ArrayBuffer> {
-  const hit = await cachedBook(book.driveFileId);
+  const hit = await cachedBook(book.fileKey);
   if (hit) return hit;
-  if (book.driveFileId.startsWith("local:")) {
+  const path = pathOf(book.fileKey);
+  if (!path) {
     throw new Error(
-      "The file for this book is not on this device and was never uploaded to Drive. Sign in before adding a book so a copy is kept.",
+      "The file for this book is not on this device and was never pushed to the repo. Connect a repository before adding a book so a copy is kept.",
     );
   }
-  const bytes = await getFileBytes(book.driveFileId);
-  await cacheBook(book.driveFileId, bytes);
+  const bytes = await fetchBook(path);
+  await cacheBook(book.fileKey, bytes);
   return bytes;
-}
-
-/** A file chosen through the Picker is already in Drive; only read it. */
-export async function probeDriveFile(
-  fileId: string,
-  onProgress?: (fraction: number, label: string) => void,
-): Promise<Probe> {
-  const meta = await getFileMeta(fileId);
-  onProgress?.(0.05, "Fetching from Drive");
-  const bytes = await getFileBytes(fileId);
-  const format = formatOf(meta.name, meta.mimeType);
-  if (!format) throw new Error("That file is not a PDF or an EPUB.");
-  const probe = await probeFile(
-    new Blob([bytes], {
-      type: format === "pdf" ? "application/pdf" : "application/epub+zip",
-    }),
-    meta.name,
-    onProgress,
-  );
-  probe.driveFileId = fileId;
-  return probe;
 }
 
 /* — entries — */

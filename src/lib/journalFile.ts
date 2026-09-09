@@ -1,4 +1,4 @@
-import type { Entry } from "../types";
+import type { Entry } from "./types";
 
 /* One file per month, so saving an entry does not rewrite the whole journal.
    The format is markdown a person can read years from now without this app;

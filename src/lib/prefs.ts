@@ -1,5 +1,5 @@
 /* Per-device preferences. These describe how this machine shows a book, not
-   what the book is, so they stay in localStorage and out of Drive. */
+   what the book is, so they stay in localStorage and out of the repo. */
 
 export type Theme = "default" | "sepia" | "dark";
 
