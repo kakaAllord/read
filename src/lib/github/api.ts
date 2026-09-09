@@ -1,9 +1,9 @@
 import { config, NotConnected, type RepoConfig } from "./config";
 
 /* The Contents API is the whole client. It is addressed by path rather than
-   by file id, which is what lets a book live at books/faith/<title>.pdf and
-   stay there, and it commits on every write, so the repo ends up holding the
-   history of the reading as well as its state. */
+   by file id, which is what lets a book keep its own folder — the file and
+   the notes on it together — and it commits on every write, so the repo ends
+   up holding the history of the reading as well as its state. */
 
 const API = "https://api.github.com";
 const VERSION = "2022-11-28";
