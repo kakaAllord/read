@@ -61,7 +61,7 @@ export default function AddBookDialog({ file, onClose, onAdded, onPickFile }: Pr
     if (!probe || saving) return;
     setSaving(true);
     setError(null);
-    setStatus(connected() ? "Pushing to the repository" : "Saving");
+    setStatus("Adding");
     setFraction(0);
     try {
       const book = await commitBook({ ...probe, verdict: { ...probe.verdict, mode } }, {
@@ -144,7 +144,7 @@ export default function AddBookDialog({ file, onClose, onAdded, onPickFile }: Pr
               the shelf, so it is worth saying where the file lands. */}
           <div style={{ fontSize: 11, lineHeight: 1.6, color: muted(48), marginTop: 4 }}>
             {connected()
-              ? `Filed under ${genreDir(genre.trim() || "unfiled")}/ in the repository.`
+              ? `Will be filed under ${genreDir(genre.trim() || "unfiled")}/ the next time you save.`
               : "Connect a repository to keep a copy outside this browser."}
           </div>
         </div>

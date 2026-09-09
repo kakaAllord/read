@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { verify } from "../lib/github/api";
 import { config, connected, parseRepo, setConfig } from "../lib/github/config";
-import { pullAll, pushLocalBooks, resetSyncState, writeLibrary } from "../lib/sync";
+import { pendingCount, pullAll, resetSyncState } from "../lib/sync";
 
 /* Connecting is three fields and one round trip. The repo is checked before
    anything is stored, so a typo in the name or a token without write on it
@@ -50,26 +50,22 @@ export default function ConnectDialog({ onClose }: Props) {
       setConfig({ ...candidate, branch: branch.trim() || info.defaultBranch });
       resetSyncState();
 
+      /* Connecting reads; it does not write. Anything already in this
+         browser stays pending until Save is pressed. */
       setNote("Reading what is already there");
       const { books, entries } = await pullAll();
-
-      /* Anything added before this moment exists only in this browser. */
-      const { pushed, stranded } = await pushLocalBooks((done, total, title) =>
-        setNote(`Pushing ${title} (${done + 1} of ${total})`),
-      );
-      await writeLibrary();
 
       const came =
         books || entries
           ? `${entries} ${entries === 1 ? "entry" : "entries"} and ${books} ${books === 1 ? "book" : "books"} came down.`
-          : "The repository was empty, so this library is now what it holds.";
-      const went = pushed ? ` ${pushed} ${pushed === 1 ? "book" : "books"} went up.` : "";
-      const lost = stranded
-        ? ` ${stranded} ${stranded === 1 ? "book has" : "books have"} no file left on this device to send — add ${stranded === 1 ? "it" : "them"} again to keep ${stranded === 1 ? "it" : "them"}.`
+          : "Nothing was in it yet.";
+      const waiting = pendingCount();
+      const todo = waiting
+        ? ` ${waiting} ${waiting === 1 ? "change is" : "changes are"} waiting here — press Save in the header to put ${waiting === 1 ? "it" : "them"} in the repo.`
         : "";
-      setNote(`Connected. ${came}${went}${lost}`);
+      setNote(`Connected. ${came}${todo}`);
       setBusy(false);
-      setTimeout(onClose, lost ? 6000 : 1800);
+      setTimeout(onClose, waiting ? 5000 : 1800);
     } catch (err) {
       /* A failed pull leaves a connection that half works; better to have
          none than to have the header claim everything is saved. */
@@ -98,7 +94,8 @@ export default function ConnectDialog({ onClose }: Props) {
         <div className="dialog-title">{connected() ? "The connected repository" : "Connect a repository"}</div>
         <div className="dialog-body">
           A private repo holds the journal, the catalog and the books. Connect the same one
-          anywhere and the writing is there.
+          anywhere and the writing is there. Connecting only reads — nothing is written until
+          you press Save.
         </div>
 
         <div className="field">

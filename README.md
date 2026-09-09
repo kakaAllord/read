@@ -28,7 +28,7 @@ puts the same journal in front of you on a different device.
    one. Under *Repository permissions* set **Contents: Read and write**. Nothing
    else — no other permission is used.
 3. Click **Local only** in the header, put in `owner/name` and the token, and
-   press Connect.
+   press Connect. Connecting only reads; press **Save** to write.
 
 There is no build-time configuration and no OAuth app: the token is checked
 against the repo before it is stored, then kept in this browser's
@@ -67,11 +67,20 @@ on the shelf but leaves the files where they were put.
 fields in an HTML comment above the body so it can be read back in; the body
 below is exactly as it was written.
 
-**A save is a commit.** Pressing `Ctrl+Enter` in the composer writes that book's
-`notes.md` and commits it there and then — no timer, nothing batched. The
-message is written for you from what you just wrote: `Note on Mere Christianity:
-On patience`, or the page if the entry has no title. `git log` is therefore a
-record of the reading, in order, not a column of "update notes".
+**Nothing is written until you press Save.** Everything you do lands in
+IndexedDB immediately and stays there; the header keeps a count of what is
+waiting — `Save 3` — and pressing it is the only thing in the app that writes to
+the repo. No timers, no writes on a scroll, nothing on the way out of the tab. A
+commit should be one you decided to make, and reading a book should not produce
+a hundred of them.
+
+What is waiting is remembered across reloads, so closing the tab with work
+pending loses nothing but the pushing of it.
+
+Each file still gets its own commit with its own message, written for you:
+`Notes on Mere Christianity (4 entries)`, `Add Mere Christianity to faith`,
+`Update the library (7 books)`. `git log` is a record of the reading rather than
+a column of "update notes".
 
 **What it will not take.** GitHub warns over 50MB a file and blocks at 100MB,
 and the Contents API carries a file as base64 in one JSON body, so the ceiling
@@ -124,15 +133,12 @@ gap over 1.4× the median, an indent, or a short previous line. It de-hyphenates
 line breaks, strips running heads and folios, and treats oversized lines as
 headings. EPUB skips all of this — it is already semantic HTML.
 
-**Sync.** IndexedDB is the working copy the interface reads from. The repo is
-the durable store. An entry is committed the moment it is saved; the catalog,
-which changes every time a page scrolls past, is debounced instead. A book is
-one file, so saving an entry rewrites only what was written about that book,
-and two saves a second apart queue behind each other rather than racing for the
-same blob. Every write quotes the blob sha it read, which is how GitHub says
-"the version I read is the version I am replacing" — a stale sha comes back as
-a 409, and that is the signal another device wrote first, so the sha is
-refetched and the write retried once. A book's bytes are cached in Cache
+**Sync.** IndexedDB is the working copy the interface reads from and writes to;
+the repo is where that is put when you say so. A book is one file, so saving
+rewrites only what changed. Every write quotes the blob sha it read, which is
+how GitHub says "the version I read is the version I am replacing" — a stale sha
+comes back as a 409, and that is the signal another device wrote first, so the
+sha is refetched and the write retried once. A book's bytes are cached in Cache
 Storage, so reading carries on through a failed save.
 
 ## Keys

@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { db, getMeta, setMeta } from "./db";
 import { cacheBook, cachedBook, dropBook } from "./cache";
 import { monthKey } from "./dates";
 import type { Book, BookFormat, Entry } from "./types";
@@ -25,12 +25,12 @@ import { renderEntries, parseEntries } from "./journalFile";
       2026-09.md          entries not tied to a book, and anything an older
                           version of this app wrote
 
-    IndexedDB is what the interface reads. The repo is what survives it, and
-    what makes the same journal appear in a browser that has never seen it.
-    An entry is committed the moment it is saved; the catalog, which changes
-    every time a page scrolls past, is debounced. */
-
-const DEBOUNCE = 2500;
+    IndexedDB is what the interface reads and writes, always, immediately.
+    The repo is where it is put when you say so — nothing is committed on a
+    timer, on a scroll, or on the way out of the tab, because a commit should
+    be something you decided to make. What is waiting is remembered across
+    reloads, so closing the tab with work pending loses nothing but the
+    pushing of it. */
 
 /* GitHub blocks a push over 100MB and warns over 50. The Contents API also
    carries the file as base64 in one JSON body, which is a third larger
@@ -58,8 +58,6 @@ export function onSyncChange(fn: (s: SyncState, e: string | null) => void): () =
   return () => listeners.delete(fn);
 }
 
-/** Called when a repo is connected or disconnected, so the header stops
-    saying "not saved" about a repo that is no longer there. */
 export function resetSyncState(): void {
   setState(connected() ? "idle" : "off");
 }
@@ -72,49 +70,58 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/* Two entries saved a second apart in the same book would otherwise race:
-   both read the same sha, and the second write is rejected. Writes to one
-   path queue behind each other instead. */
-const queues = new Map<string, Promise<unknown>>();
+/* — what is waiting to go up —
+   Kept in IndexedDB rather than in memory: a reload should not forget that
+   three books' notes were never pushed. */
 
-function serial<T>(path: string, fn: () => Promise<T>): Promise<T> {
-  const prev = queues.get(path) ?? Promise.resolve();
-  const next = prev.then(fn, fn);
-  queues.set(
-    path,
-    next.catch(() => undefined),
-  );
-  return next;
+const BOOKS_KEY = "pending.books";
+const LIBRARY_KEY = "pending.library";
+
+let pendingBooks: string[] = [];
+let pendingLibrary = false;
+const pendingListeners = new Set<(count: number) => void>();
+
+export function pendingCount(): number {
+  return pendingBooks.length + (pendingLibrary ? 1 : 0);
 }
 
-/* — the book catalog — */
-
-/* The catalog is rewritten whole, and the reading position changes it every
-   time a page scrolls past, so the push is debounced rather than immediate. */
-let libraryTimer: ReturnType<typeof setTimeout> | null = null;
-
-export function pushLibrary(): void {
-  if (!active()) return;
-  if (libraryTimer) clearTimeout(libraryTimer);
-  libraryTimer = setTimeout(() => {
-    libraryTimer = null;
-    void writeLibrary();
-  }, DEBOUNCE);
+export function onPendingChange(fn: (count: number) => void): () => void {
+  pendingListeners.add(fn);
+  return () => pendingListeners.delete(fn);
 }
 
-export async function writeLibrary(): Promise<void> {
-  if (!active()) return;
-  setState("syncing");
-  try {
-    const books = await db.books.toArray();
-    const content = JSON.stringify({ version: 2, books }, null, 2);
-    await serial(LIBRARY, () =>
-      writeText(LIBRARY, content, `Update the library (${books.length} books)`),
-    );
-    setState("idle");
-  } catch (err) {
-    setState("error", message(err));
-  }
+function announce() {
+  const n = pendingCount();
+  pendingListeners.forEach((fn) => fn(n));
+}
+
+async function persist() {
+  await setMeta(BOOKS_KEY, pendingBooks);
+  await setMeta(LIBRARY_KEY, pendingLibrary);
+}
+
+async function restore() {
+  pendingBooks = await getMeta<string[]>(BOOKS_KEY, []);
+  pendingLibrary = await getMeta<boolean>(LIBRARY_KEY, false);
+  announce();
+}
+void restore();
+
+/** An entry was written, or a book was added — that book's folder is out of
+    date in the repo until the next save. */
+export function markBookChanged(bookId: string): void {
+  if (!pendingBooks.includes(bookId)) pendingBooks.push(bookId);
+  void persist();
+  announce();
+}
+
+/** The catalog changed: a book added, a view mode flipped, a reading position
+    moved. None of it worth a commit on its own. */
+export function markLibraryChanged(): void {
+  if (pendingLibrary) return;
+  pendingLibrary = true;
+  void persist();
+  announce();
 }
 
 /* — books — */
@@ -128,20 +135,20 @@ async function freeDir(genre: string, title: string, format: BookFormat): Promis
   throw new Error(`There are already 50 books called "${title}" under ${genreDir(genre)}.`);
 }
 
-export async function uploadBook(
+async function uploadBook(
+  book: Book,
   bytes: ArrayBuffer,
-  fields: { title: string; genre: string; format: BookFormat },
   onProgress?: (fraction: number) => void,
 ): Promise<string> {
   if (bytes.byteLength > MAX_BOOK_BYTES) {
     const mb = (bytes.byteLength / 1024 / 1024).toFixed(0);
     throw new Error(
-      `That file is ${mb}MB. GitHub will not take a file over about 45MB through the API, so this one cannot go in the repo — a compressed copy will.`,
+      `"${book.title}" is ${mb}MB. GitHub will not take a file over about 45MB through the API, so it cannot go in the repo — a compressed copy will.`,
     );
   }
-  const n = await freeDir(fields.genre, fields.title, fields.format);
-  const path = bookPath(fields.genre, fields.title, fields.format, n);
-  await putBinary(path, bytes, `Add ${fields.title} to ${fields.genre}`, onProgress);
+  const n = await freeDir(book.genre, book.title, book.format);
+  const path = bookPath(book.genre, book.title, book.format, n);
+  await putBinary(path, bytes, `Add ${book.title} to ${book.genre}`, onProgress);
   return keyFor(path);
 }
 
@@ -149,114 +156,125 @@ export function fetchBook(path: string): Promise<ArrayBuffer> {
   return getBytes(path);
 }
 
-/**
- * Books added before a repo was connected have no copy anywhere but this
- * browser, and would show up on another device as a shelf of titles that will
- * not open. Run once on connecting: whatever bytes are still in the cache go
- * up, and the book's key stops being local.
- */
-export async function pushLocalBooks(
-  onProgress?: (done: number, total: number, title: string) => void,
-): Promise<{ pushed: number; stranded: number }> {
-  if (!active()) return { pushed: 0, stranded: 0 };
-  const local = (await db.books.toArray()).filter((b) => b.fileKey.startsWith("local:"));
-  if (local.length === 0) return { pushed: 0, stranded: 0 };
-
-  let pushed = 0;
-  let stranded = 0;
-  setState("syncing");
-  try {
-    for (const book of local) {
-      onProgress?.(pushed + stranded, local.length, book.title);
-      const bytes = await cachedBook(book.fileKey);
-      /* The bytes were evicted from Cache Storage at some point; the row is
-         all that is left, and there is nothing to upload. */
-      if (!bytes || bytes.byteLength > MAX_BOOK_BYTES) {
-        stranded++;
-        continue;
-      }
-      const key = await uploadBook(bytes, {
-        title: book.title,
-        genre: book.genre,
-        format: book.format,
-      });
-      await cacheBook(key, bytes);
-      await dropBook(book.fileKey);
-      await db.books.update(book.id, { fileKey: key });
-      /* Its notes were written to a folder that did not exist yet. */
-      await writeBookNotes(book.id, `Move the notes on ${book.title} next to the book`);
-      pushed++;
-    }
-    setState("idle");
-  } catch (err) {
-    setState("error", message(err));
-  }
-  return { pushed, stranded };
-}
-
-/* — the journal —
-   A save is a commit. The message names the book and the entry, so the repo
-   history reads as a record of the reading rather than a column of "update
-   notes.md". */
-
-function commitMessage(book: Book | undefined, entry: Entry): string {
-  const where = book ? book.title : "the journal";
-  if (entry.title) return `Note on ${where}: ${entry.title}`;
-  if (entry.displayLocation) return `Note on ${where}, ${entry.displayLocation}`;
-  return `Note on ${where}`;
-}
+/* — writing what is pending — */
 
 /** Everything written about one book, rewritten whole into its folder. */
-export async function writeBookNotes(bookId: string, message: string): Promise<void> {
-  if (!active()) return;
-  const book = await db.books.get(bookId);
-  if (!book) return;
+async function writeBookNotes(book: Book): Promise<void> {
   const path = notesPathForKey(book.fileKey);
-  /* The book itself was never pushed — a local-only book has no folder to
-     write into yet. pushLocalBooks comes back for these. */
-  if (!path) return;
-
-  const entries = await db.entries.where("bookId").equals(bookId).toArray();
+  if (!path) return; // never pushed; nowhere to write yet
+  const entries = await db.entries.where("bookId").equals(book.id).toArray();
+  if (entries.length === 0) return;
   const heading = book.author ? `${book.title} — ${book.author}` : book.title;
-  await serial(path, () =>
-    writeText(path, renderEntries(heading, entries, () => book.title), message),
+  const count = `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`;
+  await writeText(
+    path,
+    renderEntries(heading, entries, () => book.title),
+    `Notes on ${book.title} (${count})`,
   );
 }
 
-/** Entries with no book still go by month; nothing in the interface makes
-    one, but the type allows it and they should not vanish. */
-async function writeMonth(iso: string, message: string): Promise<void> {
-  if (!active()) return;
-  const m = monthKey(iso);
-  const all = await db.entries.toArray();
-  const loose = all.filter((e) => !e.bookId && monthKey(e.createdAt) === m);
-  if (loose.length === 0) return;
-  const path = monthPath(m);
-  await serial(path, () => writeText(path, renderEntries(m, loose, () => undefined), message));
+/** Entries with no book go by month; nothing in the interface makes one, but
+    the type allows it and they should not vanish. */
+async function writeLooseEntries(): Promise<void> {
+  const loose = (await db.entries.toArray()).filter((e) => !e.bookId);
+  const months = new Set(loose.map((e) => monthKey(e.createdAt)));
+  for (const m of months) {
+    const inMonth = loose.filter((e) => monthKey(e.createdAt) === m);
+    await writeText(
+      monthPath(m),
+      renderEntries(m, inMonth, () => undefined),
+      `Journal ${m} (${inMonth.length} ${inMonth.length === 1 ? "entry" : "entries"})`,
+    );
+  }
 }
 
-/** Called the moment an entry is saved. */
-export function noteEntrySaved(entry: Entry): void {
-  if (!active()) return;
-  void (async () => {
-    setState("syncing");
-    try {
-      if (entry.bookId) {
-        const book = await db.books.get(entry.bookId);
-        await writeBookNotes(entry.bookId, commitMessage(book, entry));
-      } else {
-        await writeMonth(entry.createdAt, commitMessage(undefined, entry));
+async function writeLibrary(): Promise<void> {
+  const books = await db.books.toArray();
+  const content = JSON.stringify({ version: 2, books }, null, 2);
+  await writeText(LIBRARY, content, `Update the library (${books.length} books)`);
+}
+
+export type SaveResult = { books: number; library: boolean; stranded: string[] };
+
+/**
+ * The only thing that writes to the repo. Uploads any book that has never
+ * been up, rewrites the notes of every book that changed, then the catalog.
+ * Each file is its own commit with its own message; what fails stays pending
+ * so the next save picks it up.
+ */
+export async function saveNow(
+  onProgress?: (label: string, done: number, total: number) => void,
+): Promise<SaveResult> {
+  if (!active()) throw new Error("No repository is connected.");
+  const ids = [...pendingBooks];
+  const total = ids.length + (pendingLibrary ? 1 : 0);
+  if (total === 0) return { books: 0, library: false, stranded: [] };
+
+  setState("syncing");
+  let done = 0;
+  let saved = 0;
+  const stranded: string[] = [];
+
+  try {
+    for (const id of ids) {
+      const book = await db.books.get(id);
+      if (!book) {
+        pendingBooks = pendingBooks.filter((b) => b !== id);
+        continue;
       }
-      setState("idle");
-    } catch (err) {
-      setState("error", message(err));
+      onProgress?.(book.title, done, total);
+
+      /* A book added before the repo was connected, or before the last save,
+         has no copy anywhere but this browser. */
+      if (!notesPathForKey(book.fileKey)) {
+        const bytes = await cachedBook(book.fileKey);
+        if (!bytes) {
+          /* The bytes were evicted from Cache Storage; the row is all that is
+             left and there is nothing to upload. */
+          stranded.push(book.title);
+          pendingBooks = pendingBooks.filter((b) => b !== id);
+          done++;
+          continue;
+        }
+        const key = await uploadBook(book, bytes);
+        await cacheBook(key, bytes);
+        await dropBook(book.fileKey);
+        await db.books.update(book.id, { fileKey: key });
+        book.fileKey = key;
+        pendingLibrary = true; // the catalog now points somewhere else
+      }
+
+      await writeBookNotes(book);
+      pendingBooks = pendingBooks.filter((b) => b !== id);
+      await persist();
+      announce();
+      saved++;
+      done++;
     }
-  })();
+
+    await writeLooseEntries();
+
+    if (pendingLibrary) {
+      onProgress?.("the library", done, total);
+      await writeLibrary();
+      pendingLibrary = false;
+      await persist();
+      announce();
+    }
+
+    setState("idle");
+    return { books: saved, library: true, stranded };
+  } catch (err) {
+    await persist();
+    announce();
+    setState("error", message(err));
+    throw err;
+  }
 }
 
 /* — pulling back down —
-   Run once after connecting. The repo wins only where it is newer; an entry
-   written offline is never overwritten by a stale copy. */
+   Run on connecting. The repo wins only where it is newer; an entry written
+   offline is never overwritten by a stale copy. */
 
 export async function pullAll(): Promise<{ books: number; entries: number }> {
   if (!active()) return { books: 0, entries: 0 };
@@ -316,14 +334,7 @@ export async function pullAll(): Promise<{ books: number; entries: number }> {
   }
 }
 
-/* A page close should not lose a catalog write that is still on its timer.
-   Entries are already committed by the time this runs. */
-if (typeof window !== "undefined") {
-  window.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden" && libraryTimer) {
-      clearTimeout(libraryTimer);
-      libraryTimer = null;
-      void writeLibrary();
-    }
-  });
+export function noteEntrySaved(entry: Entry): void {
+  if (entry.bookId) markBookChanged(entry.bookId);
+  else markLibraryChanged(); // a loose entry rides along with the next save
 }

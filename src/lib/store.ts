@@ -9,9 +9,8 @@ import { extractEpub } from "./text/epubExtract";
 import { detectMode, type ModeVerdict } from "./text/modeDetect";
 import { coverFromPdf } from "./text/cover";
 import { cacheBook, cachedBook } from "./cache";
-import { connected } from "./github/config";
 import { pathOf } from "./github/paths";
-import { fetchBook, noteEntrySaved, pushLibrary, uploadBook } from "./sync";
+import { fetchBook, markBookChanged, markLibraryChanged, noteEntrySaved } from "./sync";
 import type { Anchor, Book, BookFormat, BookText, Entry } from "./types";
 
 export type Probe = {
@@ -121,17 +120,12 @@ export async function commitBook(
   const title = fields.title.trim() || probe.title;
   const genre = (fields.genre.trim() || "unfiled").toLowerCase();
 
-  /* The genre decides the folder, so it is settled before the upload rather
-     than after: books/faith/mere-christianity.pdf. */
-  let fileKey = "";
-  if (connected()) {
-    fileKey = await uploadBook(probe.bytes, { title, genre, format: probe.format }, onProgress);
-  } else {
-    onProgress?.(1);
-  }
-
-  const key = fileKey || `local:${probe.text.bookId}`;
+  /* Nothing is uploaded here. The book is kept in this browser and marked as
+     waiting; pressing Save is what puts it in the repo, under the genre it
+     was given. */
+  const key = `local:${probe.text.bookId}`;
   await cacheBook(key, probe.bytes);
+  onProgress?.(1);
 
   const book: Book = {
     id: probe.text.bookId,
@@ -149,7 +143,8 @@ export async function commitBook(
 
   await db.books.put(book);
   await db.texts.put(probe.text);
-  void pushLibrary();
+  markBookChanged(book.id);
+  markLibraryChanged();
   return book;
 }
 
@@ -176,7 +171,7 @@ export async function loadBookBytes(book: Book): Promise<ArrayBuffer> {
   const path = pathOf(book.fileKey);
   if (!path) {
     throw new Error(
-      "The file for this book is not on this device and was never pushed to the repo. Connect a repository before adding a book so a copy is kept.",
+      "The file for this book is not on this device, and it was never saved to the repo.",
     );
   }
   const bytes = await fetchBook(path);
@@ -238,7 +233,7 @@ export async function rememberLocation(
     lastOpenedAt: new Date().toISOString(),
   });
   if (progress) await setMeta(progressKey(bookId), progress);
-  void pushLibrary();
+  markLibraryChanged();
 }
 
 export async function recordSession(bookId: string, minutes: number): Promise<void> {
@@ -252,7 +247,7 @@ export async function recordSession(bookId: string, minutes: number): Promise<vo
 
 export async function setViewMode(bookId: string, viewMode: Book["viewMode"]): Promise<void> {
   await db.books.update(bookId, { viewMode });
-  void pushLibrary();
+  markLibraryChanged();
 }
 
 /** "Psalms 22 · p. 612" — written once, at save time, and never recomputed. */
