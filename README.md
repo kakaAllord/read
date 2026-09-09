@@ -20,7 +20,9 @@ The app works without one — books and entries live in IndexedDB and nothing
 leaves the machine. The repo is what makes the writing outlive the app, and what
 puts the same journal in front of you on a different device.
 
-1. Make a repository. Private, empty, no README needed.
+1. Make a repository — private, and separate from this one; the library is
+   not source code. Tick **Add a README** so the default branch exists before
+   the app writes to it.
 2. Make a [fine-grained token](https://github.com/settings/personal-access-tokens/new).
    Under *Repository access* choose **Only select repositories** and pick that
    one. Under *Repository permissions* set **Contents: Read and write**. Nothing
