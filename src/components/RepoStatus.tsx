@@ -11,11 +11,23 @@ import {
   type SyncState,
 } from "../lib/sync";
 
-/* Two words in the header, in its own type — 12px, uppercase, tracked — so
-   they read as part of that row rather than as widgets bolted onto it. The
-   repo name opens the connect dialog; Save is the only thing in the app that
-   writes to the repo, and it says how much is waiting so that pressing it is
+/* The mark says where the writing goes, and how faded it is says whether it
+   is going anywhere yet: dim for no repository, inked for one, accent when a
+   save did not land. Which repo it is belongs in the tooltip and the dialog,
+   which is where you would look for it.
+
+   Save stays a word, because it is the one thing here carrying a number and
+   an icon cannot say "three". It is also the only thing in the app that
+   writes to the repo, so it says how much is waiting — pressing it should be
    a decision rather than a habit. */
+
+function GitHubMark() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden focusable="false">
+      <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z" />
+    </svg>
+  );
+}
 
 const muted = (pct: number) => `color-mix(in srgb, var(--color-text) ${pct}%, transparent)`;
 
@@ -77,11 +89,12 @@ export default function RepoStatus() {
   }
 
   const cfg = config();
-  const repoWord = !live ? "Local only" : sync === "error" ? "Not saved" : (cfg?.repo ?? "Repo");
-  const repoColor = !live ? muted(38) : sync === "error" ? "var(--color-accent-700)" : muted(45);
-  const repoTitle = !live
-    ? "Nothing leaves this device. Click to connect a repository."
-    : (error ?? `Connected to ${cfg?.owner}/${cfg?.repo} — click to change it`);
+  const markColor = !live ? muted(26) : sync === "error" ? "var(--color-accent-700)" : muted(52);
+  const markTitle = !live
+    ? "No repository connected — nothing leaves this device. Click to connect one."
+    : sync === "error"
+      ? (error ?? `Something did not reach ${cfg?.owner}/${cfg?.repo}`)
+      : `${cfg?.owner}/${cfg?.repo} — click to change it`;
 
   return (
     <>
@@ -103,8 +116,15 @@ export default function RepoStatus() {
           {saving ? (label ?? "Saving") : `Save ${waiting}`}
         </div>
       )}
-      <div onClick={() => setOpen(true)} title={repoTitle} style={{ ...word, color: repoColor }}>
-        {repoWord}
+      <div
+        onClick={() => setOpen(true)}
+        title={markTitle}
+        /* The row aligns on the baseline, which puts a replaced element's
+           bottom edge on it; the nudge drops the mark until its centre sits
+           with the cap height of the words either side. */
+        style={{ ...word, color: markColor, display: "flex", position: "relative", top: 3 }}
+      >
+        <GitHubMark />
       </div>
       {open && <ConnectDialog onClose={() => setOpen(false)} />}
     </>

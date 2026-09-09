@@ -27,8 +27,8 @@ puts the same journal in front of you on a different device.
    Under *Repository access* choose **Only select repositories** and pick that
    one. Under *Repository permissions* set **Contents: Read and write**. Nothing
    else — no other permission is used.
-3. Click **Local only** in the header, put in `owner/name` and the token, and
-   press Connect. Connecting only reads; press **Save** to write.
+3. Click the **GitHub mark** in the header, put in `owner/name` and the token,
+   and press Connect. Connecting only reads; press **Save** to write.
 
 There is no build-time configuration and no OAuth app: the token is checked
 against the repo before it is stored, then kept in this browser's
