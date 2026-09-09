@@ -1,9 +1,9 @@
 import type { Entry } from "./types";
 
-/* One file per month, so saving an entry does not rewrite the whole journal.
-   The format is markdown a person can read years from now without this app;
-   the comment block carries the fields that would otherwise be lost, and the
-   body below it is left exactly as written. */
+/* One file per book, so saving an entry rewrites only what was written about
+   that book. The format is markdown a person can read years from now without
+   this app; the comment block carries the fields that would otherwise be
+   lost, and the body below it is left exactly as written. */
 
 const OPEN = "<!-- read ";
 const CLOSE = " -->";
@@ -11,9 +11,13 @@ const END = "<!-- /read -->";
 
 type Meta = Omit<Entry, "body"> & { bookTitle?: string };
 
-export function renderMonth(monthKey: string, entries: Entry[], titleOf: (id?: string) => string | undefined): string {
+export function renderEntries(
+  heading: string,
+  entries: Entry[],
+  titleOf: (id?: string) => string | undefined,
+): string {
   const sorted = [...entries].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const lines: string[] = [`# ${monthKey}`, ""];
+  const lines: string[] = [`# ${heading}`, ""];
 
   for (const e of sorted) {
     const meta: Meta = {
@@ -43,7 +47,7 @@ export function renderMonth(monthKey: string, entries: Entry[], titleOf: (id?: s
   return lines.join("\n");
 }
 
-export function parseMonth(markdown: string): Entry[] {
+export function parseEntries(markdown: string): Entry[] {
   const out: Entry[] = [];
   let cursor = 0;
   for (;;) {

@@ -41,24 +41,37 @@ stale one.
 ### What lands in the repo
 
 ```
-library.json          the book catalog
+library.json                      the book catalog
 books/
   faith/
-    mere-christianity.pdf
+    mere-christianity/
+      mere-christianity.pdf
+      notes.md                    everything written about it
   detective/
-    the-hound-of-the-baskervilles.epub
+    the-hound-of-the-baskervilles/
+      the-hound-of-the-baskervilles.epub
+      notes.md
 journal/
-  2026-09.md          one file per month
+  2026-09.md                      entries not tied to a book
 ```
 
-The genre typed into the Add dialog is the folder the file goes in, lowercased
-and hyphenated. It is settled at import: renaming a genre later moves the book
-on the shelf but leaves the file where it was put.
+A book is a folder, and what was written about it sits next to it. Opening that
+folder on github.com is the whole of a reading — the text and the thinking, in
+one place, without this app.
 
-The journal files are markdown you can read without this app. Each entry keeps
-its fields in an HTML comment above the body so it can be read back in; the body
-below is exactly as it was written. Every save is a commit, so `git log` is a
-record of the reading as well as a backup of it.
+The genre typed into the Add dialog is the folder the book goes in, lowercased
+and hyphenated. It is settled at import: renaming a genre later moves the book
+on the shelf but leaves the files where they were put.
+
+`notes.md` is markdown you can read without this app. Each entry keeps its
+fields in an HTML comment above the body so it can be read back in; the body
+below is exactly as it was written.
+
+**A save is a commit.** Pressing `Ctrl+Enter` in the composer writes that book's
+`notes.md` and commits it there and then — no timer, nothing batched. The
+message is written for you from what you just wrote: `Note on Mere Christianity:
+On patience`, or the page if the entry has no title. `git log` is therefore a
+record of the reading, in order, not a column of "update notes".
 
 **What it will not take.** GitHub warns over 50MB a file and blocks at 100MB,
 and the Contents API carries a file as base64 in one JSON body, so the ceiling
@@ -84,7 +97,7 @@ src/
     text/         PDF and EPUB extraction, view-mode detection, covers
     github/       config, the Contents API client, repo paths
     sync.ts       what gets written up, when, and what comes back down
-    journalFile.ts  the markdown a month is rendered to and parsed from
+    journalFile.ts  the markdown entries are rendered to and parsed from
     cache.ts      book bytes, kept in Cache Storage
     anchors.ts    turning a selection into an anchor, and finding it again
     db.ts         Dexie schema
@@ -112,13 +125,15 @@ line breaks, strips running heads and folios, and treats oversized lines as
 headings. EPUB skips all of this — it is already semantic HTML.
 
 **Sync.** IndexedDB is the working copy the interface reads from. The repo is
-the durable store, written through on save and debounced. A month is one file,
-so saving an entry does not rewrite the journal. Every write quotes the blob
-sha it read, which is how GitHub says "the version I read is the version I am
-replacing" — a stale sha comes back as a 409, and that is the signal another
-device wrote first, so the sha is refetched and the write retried once. A
-book's bytes are cached in Cache Storage, so reading carries on through a
-failed save.
+the durable store. An entry is committed the moment it is saved; the catalog,
+which changes every time a page scrolls past, is debounced instead. A book is
+one file, so saving an entry rewrites only what was written about that book,
+and two saves a second apart queue behind each other rather than racing for the
+same blob. Every write quotes the blob sha it read, which is how GitHub says
+"the version I read is the version I am replacing" — a stale sha comes back as
+a 409, and that is the signal another device wrote first, so the sha is
+refetched and the write retried once. A book's bytes are cached in Cache
+Storage, so reading carries on through a failed save.
 
 ## Keys
 

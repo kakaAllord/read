@@ -4,18 +4,31 @@ import { monthKey } from "./dates";
 import type { Book, BookFormat, Entry } from "./types";
 import { exists, getBytes, list, putBinary, readText, writeText } from "./github/api";
 import { connected } from "./github/config";
-import { bookPath, genreDir, keyFor, LIBRARY, monthPath, JOURNAL } from "./github/paths";
-import { renderMonth, parseMonth } from "./journalFile";
+import {
+  bookPath,
+  genreDir,
+  keyFor,
+  LIBRARY,
+  monthPath,
+  notesPathForKey,
+  JOURNAL,
+} from "./github/paths";
+import { renderEntries, parseEntries } from "./journalFile";
 
 /*  library.json          book catalog
-    books/<genre>/…       the files, filed under the genre they were given
+    books/
+      faith/
+        mere-christianity/
+          mere-christianity.pdf
+          notes.md        everything written about that book
     journal/
-      2026-09.md          one file per month
+      2026-09.md          entries not tied to a book, and anything an older
+                          version of this app wrote
 
     IndexedDB is what the interface reads. The repo is what survives it, and
     what makes the same journal appear in a browser that has never seen it.
-    Writes go through on save, debounced, and a failed write leaves the local
-    copy untouched and marks the month dirty for the next attempt. */
+    An entry is committed the moment it is saved; the catalog, which changes
+    every time a page scrolls past, is debounced. */
 
 const DEBOUNCE = 2500;
 
@@ -59,6 +72,21 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/* Two entries saved a second apart in the same book would otherwise race:
+   both read the same sha, and the second write is rejected. Writes to one
+   path queue behind each other instead. */
+const queues = new Map<string, Promise<unknown>>();
+
+function serial<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const prev = queues.get(path) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  queues.set(
+    path,
+    next.catch(() => undefined),
+  );
+  return next;
+}
+
 /* — the book catalog — */
 
 /* The catalog is rewritten whole, and the reading position changes it every
@@ -79,8 +107,10 @@ export async function writeLibrary(): Promise<void> {
   setState("syncing");
   try {
     const books = await db.books.toArray();
-    const content = JSON.stringify({ version: 1, books }, null, 2);
-    await writeText(LIBRARY, content, `Update the library (${books.length} books)`);
+    const content = JSON.stringify({ version: 2, books }, null, 2);
+    await serial(LIBRARY, () =>
+      writeText(LIBRARY, content, `Update the library (${books.length} books)`),
+    );
     setState("idle");
   } catch (err) {
     setState("error", message(err));
@@ -89,12 +119,11 @@ export async function writeLibrary(): Promise<void> {
 
 /* — books — */
 
-/** The first path in the genre folder that is not taken. Two books with the
-    same title under the same genre get -2, -3, the way a person would. */
-async function freePath(genre: string, title: string, format: BookFormat): Promise<string> {
+/** The first folder in the genre that is not taken. Two books with the same
+    title under the same genre get -2, -3, the way a person would. */
+async function freeDir(genre: string, title: string, format: BookFormat): Promise<number> {
   for (let n = 0; n < 50; n++) {
-    const path = bookPath(genre, title, format, n);
-    if (!(await exists(path))) return path;
+    if (!(await exists(bookPath(genre, title, format, n)))) return n;
   }
   throw new Error(`There are already 50 books called "${title}" under ${genreDir(genre)}.`);
 }
@@ -110,7 +139,8 @@ export async function uploadBook(
       `That file is ${mb}MB. GitHub will not take a file over about 45MB through the API, so this one cannot go in the repo — a compressed copy will.`,
     );
   }
-  const path = await freePath(fields.genre, fields.title, fields.format);
+  const n = await freeDir(fields.genre, fields.title, fields.format);
+  const path = bookPath(fields.genre, fields.title, fields.format, n);
   await putBinary(path, bytes, `Add ${fields.title} to ${fields.genre}`, onProgress);
   return keyFor(path);
 }
@@ -153,6 +183,8 @@ export async function pushLocalBooks(
       await cacheBook(key, bytes);
       await dropBook(book.fileKey);
       await db.books.update(book.id, { fileKey: key });
+      /* Its notes were written to a folder that did not exist yet. */
+      await writeBookNotes(book.id, `Move the notes on ${book.title} next to the book`);
       pushed++;
     }
     setState("idle");
@@ -162,45 +194,64 @@ export async function pushLocalBooks(
   return { pushed, stranded };
 }
 
-/* — the journal — */
+/* — the journal —
+   A save is a commit. The message names the book and the entry, so the repo
+   history reads as a record of the reading rather than a column of "update
+   notes.md". */
 
-const dirty = new Set<string>();
-let timer: ReturnType<typeof setTimeout> | null = null;
-
-export function queueMonth(iso: string): void {
-  if (!active()) return;
-  dirty.add(monthKey(iso));
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(() => void flushMonths(), DEBOUNCE);
+function commitMessage(book: Book | undefined, entry: Entry): string {
+  const where = book ? book.title : "the journal";
+  if (entry.title) return `Note on ${where}: ${entry.title}`;
+  if (entry.displayLocation) return `Note on ${where}, ${entry.displayLocation}`;
+  return `Note on ${where}`;
 }
 
-export async function flushMonths(): Promise<void> {
-  if (timer) {
-    clearTimeout(timer);
-    timer = null;
-  }
-  if (!active() || dirty.size === 0) return;
-  const months = [...dirty];
-  dirty.clear();
-  setState("syncing");
-  try {
-    const books = await db.books.toArray();
-    const titleOf = (id?: string) => books.find((b) => b.id === id)?.title;
-    const all = await db.entries.toArray();
+/** Everything written about one book, rewritten whole into its folder. */
+export async function writeBookNotes(bookId: string, message: string): Promise<void> {
+  if (!active()) return;
+  const book = await db.books.get(bookId);
+  if (!book) return;
+  const path = notesPathForKey(book.fileKey);
+  /* The book itself was never pushed — a local-only book has no folder to
+     write into yet. pushLocalBooks comes back for these. */
+  if (!path) return;
 
-    for (const m of months) {
-      const inMonth = all.filter((e) => monthKey(e.createdAt) === m);
-      await writeText(
-        monthPath(m),
-        renderMonth(m, inMonth, titleOf),
-        `Journal ${m} (${inMonth.length} ${inMonth.length === 1 ? "entry" : "entries"})`,
-      );
+  const entries = await db.entries.where("bookId").equals(bookId).toArray();
+  const heading = book.author ? `${book.title} — ${book.author}` : book.title;
+  await serial(path, () =>
+    writeText(path, renderEntries(heading, entries, () => book.title), message),
+  );
+}
+
+/** Entries with no book still go by month; nothing in the interface makes
+    one, but the type allows it and they should not vanish. */
+async function writeMonth(iso: string, message: string): Promise<void> {
+  if (!active()) return;
+  const m = monthKey(iso);
+  const all = await db.entries.toArray();
+  const loose = all.filter((e) => !e.bookId && monthKey(e.createdAt) === m);
+  if (loose.length === 0) return;
+  const path = monthPath(m);
+  await serial(path, () => writeText(path, renderEntries(m, loose, () => undefined), message));
+}
+
+/** Called the moment an entry is saved. */
+export function noteEntrySaved(entry: Entry): void {
+  if (!active()) return;
+  void (async () => {
+    setState("syncing");
+    try {
+      if (entry.bookId) {
+        const book = await db.books.get(entry.bookId);
+        await writeBookNotes(entry.bookId, commitMessage(book, entry));
+      } else {
+        await writeMonth(entry.createdAt, commitMessage(undefined, entry));
+      }
+      setState("idle");
+    } catch (err) {
+      setState("error", message(err));
     }
-    setState("idle");
-  } catch (err) {
-    months.forEach((m) => dirty.add(m));
-    setState("error", message(err));
-  }
+  })();
 }
 
 /* — pulling back down —
@@ -213,37 +264,50 @@ export async function pullAll(): Promise<{ books: number; entries: number }> {
   try {
     let bookCount = 0;
     let entryCount = 0;
+    const seen = new Set<string>();
 
-    const lib = await readText(LIBRARY);
-    if (lib) {
-      const parsed = JSON.parse(lib) as { books?: Book[] };
-      for (const b of parsed.books ?? []) {
-        const local = await db.books.get(b.id);
-        /* A book already here keeps its own copy unless the repo has been
-           read more recently — that is what carries a reading position from
-           one device to the next. */
-        if (!local) {
-          await db.books.put(b);
-          bookCount++;
-        } else if ((b.lastOpenedAt ?? "") > (local.lastOpenedAt ?? "")) {
-          await db.books.put({ ...local, ...b });
-        }
-      }
-    }
-
-    const months = await list(JOURNAL);
-    for (const m of months) {
-      if (m.isDir || !m.name.endsWith(".md")) continue;
-      const text = await readText(m.path);
-      if (!text) continue;
-      for (const e of parseMonth(text)) {
+    const take = async (markdown: string) => {
+      for (const e of parseEntries(markdown)) {
+        if (seen.has(e.id)) continue;
+        seen.add(e.id);
         const local = await db.entries.get(e.id);
         if (!local || local.updatedAt < e.updatedAt) {
           await db.entries.put(e);
           entryCount++;
         }
       }
+    };
+
+    /* The catalog says where every book's folder is, so the notes are found
+       by reading it rather than by walking the tree. */
+    const lib = await readText(LIBRARY);
+    const books: Book[] = lib ? ((JSON.parse(lib) as { books?: Book[] }).books ?? []) : [];
+    for (const b of books) {
+      const local = await db.books.get(b.id);
+      if (!local) {
+        await db.books.put(b);
+        bookCount++;
+      } else if ((b.lastOpenedAt ?? "") > (local.lastOpenedAt ?? "")) {
+        /* A book already here keeps its own copy unless the repo has been
+           read more recently — that is what carries a reading position from
+           one device to the next. */
+        await db.books.put({ ...local, ...b });
+      }
+      const notes = notesPathForKey(b.fileKey);
+      if (notes) {
+        const text = await readText(notes);
+        if (text) await take(text);
+      }
     }
+
+    /* Loose entries, and whatever a month-per-file version of this app left
+       behind. Duplicates are skipped by id. */
+    for (const m of await list(JOURNAL)) {
+      if (m.isDir || !m.name.endsWith(".md")) continue;
+      const text = await readText(m.path);
+      if (text) await take(text);
+    }
+
     setState("idle");
     return { books: bookCount, entries: entryCount };
   } catch (err) {
@@ -252,20 +316,14 @@ export async function pullAll(): Promise<{ books: number; entries: number }> {
   }
 }
 
-export function noteEntrySaved(entry: Entry): void {
-  queueMonth(entry.createdAt);
-}
-
-/* A page close should not lose the last two seconds of writing. */
+/* A page close should not lose a catalog write that is still on its timer.
+   Entries are already committed by the time this runs. */
 if (typeof window !== "undefined") {
   window.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") {
-      void flushMonths();
-      if (libraryTimer) {
-        clearTimeout(libraryTimer);
-        libraryTimer = null;
-        void writeLibrary();
-      }
+    if (document.visibilityState === "hidden" && libraryTimer) {
+      clearTimeout(libraryTimer);
+      libraryTimer = null;
+      void writeLibrary();
     }
   });
 }
