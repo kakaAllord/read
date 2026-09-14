@@ -116,24 +116,73 @@ a:hover { color: var(--color-accent-700); }
 /* A line break between spans is structure, not something to paint. */
 .textLayer br::selection { background: transparent; }
 
-/* Highlights are painted through the CSS Custom Highlight API, so these
-   ranges exist in no element and the rules have to be named rather than
-   selected. Only background-color and color apply to ::highlight(), which is
-   why there is no underline or border here — and why it works over the
-   transparent text of a drawn page, where a background is the only thing
-   that could show anyway.
+/* Marks are painted through the CSS Custom Highlight API, so these ranges
+   exist in no element and the rules have to be named rather than selected.
+   Only background-color and color apply to ::highlight(), which is why there
+   is no underline or border here — and why it works over the transparent text
+   of a drawn page, where a background is the only thing that could show
+   anyway.
 
-   Colour-mixed against the page rather than fixed, so sepia and night get a
-   highlight that belongs to them instead of a yellow stuck on top. */
-::highlight(read-highlight) {
-  background-color: color-mix(in srgb, var(--color-accent) 26%, transparent);
+   `color` is deliberately never set: over a drawn page the text is
+   transparent on purpose, and giving it one would print a second copy of the
+   words on top of the scanned ink. */
+
+/* The five highlight colours. Held as tokens so the swatches in the palette
+   and the paint on the page cannot drift apart, and so a theme can retune
+   them — the same yellow that sits well on white is mud on a dark page. */
+:root {
+  --hl-1: #f4c95d;
+  --hl-2: #86cfa0;
+  --hl-3: #7fc4e8;
+  --hl-4: #e999bc;
+  --hl-5: #b79ad8;
+  --hl-strength: 46%;
 }
 
-/* A question still waiting on an answer is a different mark from a passage
-   you simply wanted to keep, so it takes the second accent rather than a
-   paler version of the first. `color` is deliberately not set: over a drawn
-   page the text is transparent on purpose, and giving it one would print a
-   second copy of the words on top of the scanned ink. */
+:root[data-theme="sepia"] {
+  --hl-1: #e8bc55;
+  --hl-2: #8cc79f;
+  --hl-3: #84bcd8;
+  --hl-4: #dd94b2;
+  --hl-5: #ad95c9;
+  --hl-strength: 44%;
+}
+
+/* Brighter and thinner: on a dark page a wash reads as a colour, and the
+   letters underneath still have to be letters. */
+:root[data-theme="dark"] {
+  --hl-1: #f6d270;
+  --hl-2: #8fe0ad;
+  --hl-3: #8ad3f5;
+  --hl-4: #f3a7c8;
+  --hl-5: #c6a9ea;
+  --hl-strength: 34%;
+}
+
+::highlight(read-hl-1) {
+  background-color: color-mix(in srgb, var(--hl-1) var(--hl-strength), transparent);
+}
+::highlight(read-hl-2) {
+  background-color: color-mix(in srgb, var(--hl-2) var(--hl-strength), transparent);
+}
+::highlight(read-hl-3) {
+  background-color: color-mix(in srgb, var(--hl-3) var(--hl-strength), transparent);
+}
+::highlight(read-hl-4) {
+  background-color: color-mix(in srgb, var(--hl-4) var(--hl-strength), transparent);
+}
+::highlight(read-hl-5) {
+  background-color: color-mix(in srgb, var(--hl-5) var(--hl-strength), transparent);
+}
+
+/* A bookmark chose no colour, so it is given none — the accent the rest of
+   the app is already made of, saying "this" and nothing more. */
+::highlight(read-bookmark) {
+  background-color: color-mix(in srgb, var(--color-accent) 24%, transparent);
+}
+
+/* A question still waiting on an answer is a different mark again, so it
+   takes the second accent rather than a paler version of the first. */
 ::highlight(read-question) {
   background-color: color-mix(in srgb, var(--color-accent-2) 30%, transparent);
 }

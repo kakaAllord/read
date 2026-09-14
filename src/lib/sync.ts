@@ -1,7 +1,7 @@
 import { db, getMeta, setMeta } from "./db";
 import { cacheBook, cachedBook, dropBook } from "./cache";
 import { monthKey } from "./dates";
-import type { Book, Entry } from "./types";
+import type { Book, Entry, Legend } from "./types";
 import { exists, getBytes, list, putBinary, readText, writeText } from "./github/api";
 import { connected } from "./github/config";
 import {
@@ -39,6 +39,9 @@ import { renderEntries, parseEntries } from "./journalFile";
    carries the file as base64 in one JSON body, which is a third larger
    again, so the ceiling here is lower than the one GitHub advertises. */
 export const MAX_BOOK_BYTES = 45 * 1024 * 1024;
+
+/** Where the colour legend is kept. Read and written through store.ts. */
+export const LEGEND_KEY = "highlight.legend";
 
 export type SyncState = "off" | "idle" | "syncing" | "error";
 
@@ -227,7 +230,11 @@ async function writeLooseEntries(): Promise<void> {
 
 async function writeLibrary(): Promise<void> {
   const books = await db.books.toArray();
-  const content = JSON.stringify({ version: 2, books }, null, 2);
+  /* The legend rides with the catalog rather than with any one book: what a
+     colour means is a fact about the reader, not about a book, and it has to
+     reach the other device along with the marks that use it. */
+  const legend = await getMeta<Legend>(LEGEND_KEY, {});
+  const content = JSON.stringify({ version: 3, books, legend }, null, 2);
   await writeText(LIBRARY, content, `Update the library (${books.length} books)`);
 }
 
@@ -336,7 +343,9 @@ export async function pullAll(): Promise<{ books: number; entries: number }> {
     /* The catalog says where every book's folder is, so the notes are found
        by reading it rather than by walking the tree. */
     const lib = await readText(LIBRARY);
-    const books: Book[] = lib ? ((JSON.parse(lib) as { books?: Book[] }).books ?? []) : [];
+    const parsed = lib ? (JSON.parse(lib) as { books?: Book[]; legend?: Legend }) : {};
+    const books: Book[] = parsed.books ?? [];
+    if (parsed.legend) await setMeta(LEGEND_KEY, parsed.legend);
     for (const b of books) {
       const local = await db.books.get(b.id);
       if (!local) {

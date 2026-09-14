@@ -1,4 +1,4 @@
-import { db, setMeta } from "./db";
+import { db, getMeta, setMeta } from "./db";
 import { newId } from "./ids";
 import { countWords } from "./words";
 import { parseRef } from "./bibleRefs";
@@ -9,9 +9,25 @@ import { detectMode, type ModeVerdict } from "./text/modeDetect";
 import { coverFromPdf } from "./text/cover";
 import { cacheBook, cachedBook } from "./cache";
 import { pathOf } from "./github/paths";
-import { fetchBook, markBookChanged, markLibraryChanged, noteEntrySaved, pushNewBook } from "./sync";
+import {
+  fetchBook,
+  LEGEND_KEY,
+  markBookChanged,
+  markLibraryChanged,
+  noteEntrySaved,
+  pushNewBook,
+} from "./sync";
 import { connected } from "./github/config";
-import type { Anchor, Book, BookText, Entry, EntryKind, QuestionStatus } from "./types";
+import type {
+  Anchor,
+  Book,
+  BookText,
+  Entry,
+  EntryKind,
+  HighlightColor,
+  Legend,
+  QuestionStatus,
+} from "./types";
 
 export type Probe = {
   bytes: ArrayBuffer;
@@ -193,20 +209,21 @@ export async function saveEntry(draft: Draft): Promise<Entry> {
 }
 
 /**
- * A highlight is the passage and nothing else — no title, no body, no cursor
- * taken away from the page. It is the cheapest thing you can do to a sentence
- * that you want to be able to find again.
+ * A mark on the passage and nothing else — no title, no body, no cursor taken
+ * away from the page. A bookmark says "this"; a highlight says "this, and it
+ * is one of these", which is why only the second has a colour.
  */
-export async function saveHighlight(
+export async function saveMark(
   bookId: string,
   anchor: Anchor,
   excerpt: string,
   displayLocation: string,
+  color?: HighlightColor,
 ): Promise<Entry> {
   const now = new Date().toISOString();
   const entry: Entry = {
-    id: newId("h"),
-    kind: "highlight",
+    id: newId(color ? "h" : "k"),
+    kind: color ? "highlight" : "bookmark",
     bookId,
     body: "",
     anchor,
@@ -215,6 +232,7 @@ export async function saveHighlight(
     wordCount: 0,
     source: "typed",
     tags: [],
+    color,
     createdAt: now,
     updatedAt: now,
   };
@@ -223,12 +241,33 @@ export async function saveHighlight(
   return entry;
 }
 
-/** Pressing H on a passage already highlighted takes the highlight off. */
-export async function unhighlight(id: string): Promise<void> {
+/** Picking the colour a passage already has takes the highlight off. */
+export async function removeMark(id: string): Promise<void> {
   const entry = await db.entries.get(id);
   if (!entry) return;
   await db.entries.delete(id);
   noteEntrySaved(entry);
+}
+
+/** Picking a different colour recolours rather than marking twice. */
+export async function recolorMark(id: string, color: HighlightColor): Promise<void> {
+  const entry = await db.entries.get(id);
+  if (!entry) return;
+  await db.entries.update(id, { color, updatedAt: new Date().toISOString() });
+  noteEntrySaved({ ...entry, color });
+}
+
+/* — what the colours mean —
+   Kept beside the books rather than inside any one of them: a colour system
+   that changed from book to book would not be a system. */
+
+export function readLegend(): Promise<Legend> {
+  return getMeta<Legend>(LEGEND_KEY, {});
+}
+
+export async function writeLegend(legend: Legend): Promise<void> {
+  await setMeta(LEGEND_KEY, legend);
+  markLibraryChanged();
 }
 
 export async function setQuestionStatus(id: string, status: QuestionStatus): Promise<void> {

@@ -14,6 +14,7 @@ import {
   todayKey,
 } from "../lib/dates";
 import type { Progress } from "../lib/store";
+import { isMark } from "../lib/types";
 import BookPlate from "../components/BookPlate";
 
 const muted = (pct: number) => `color-mix(in srgb, var(--color-text) ${pct}%, transparent)`;
@@ -42,10 +43,10 @@ export default function Dashboard() {
     const ss = sessions ?? [];
     const prog = progress ?? {};
 
-    /* The streak and the recent list are about writing. A highlight is one
-       keystroke and no words, so it belongs to neither — counting it would
-       let a day of marking passages stand in for a day of thinking. */
-    const written = es.filter((e) => e.kind !== "highlight");
+    /* The streak and the recent list are about writing, and a mark is not
+       writing — counting it would let a day of colouring passages stand in
+       for a day of thinking. */
+    const written = es.filter((e) => !isMark(e.kind));
 
     const dayKeys = new Set(written.map((e) => localDayKey(e.createdAt)));
     const streak = streakFrom(dayKeys);

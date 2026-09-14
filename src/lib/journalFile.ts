@@ -15,6 +15,7 @@ type Meta = Omit<Entry, "body" | "kind"> & { kind?: Entry["kind"]; bookTitle?: s
    says whether it is still open; a highlight has nothing written on it, so it
    is named by where it came from. */
 function headingFor(e: Entry): string {
+  if (e.kind === "bookmark") return e.displayLocation || "Bookmark";
   if (e.kind === "highlight") return e.displayLocation || "Highlight";
   if (e.kind === "question") {
     const asked = e.title || "Untitled";
@@ -44,6 +45,7 @@ export function renderEntries(
       wordCount: e.wordCount,
       source: e.source,
       tags: e.tags,
+      color: e.color,
       status: e.status,
       answeredAt: e.answeredAt,
       createdAt: e.createdAt,
@@ -108,6 +110,7 @@ export function parseEntries(markdown: string): Entry[] {
       wordCount: meta.wordCount,
       source: meta.source,
       tags: meta.tags ?? [],
+      color: meta.color,
       status: meta.status,
       answeredAt: meta.answeredAt,
       createdAt: meta.createdAt,

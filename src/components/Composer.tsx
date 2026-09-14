@@ -26,6 +26,13 @@ const WORDING: Record<EntryKind, { heading: string; body: string; free: string }
     body: "Anything you already suspect, and where you would start.",
     free: "Question with no passage attached.",
   },
+  /* Neither is ever composed — a mark asks nothing — but the record is one
+      type and the table has to be whole. */
+  bookmark: {
+    heading: "Heading",
+    body: "Write.",
+    free: "Free-standing entry — no passage attached.",
+  },
   highlight: {
     heading: "Heading",
     body: "Write.",

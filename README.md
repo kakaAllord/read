@@ -142,12 +142,27 @@ gap over 1.4× the median, an indent, or a short previous line. It de-hyphenates
 line breaks, strips running heads and folios, and treats oversized lines as
 headings.
 
-**Three things, one record.** A note, a highlight and a question are the same
-row with a different `kind`. Anchoring, syncing, the markdown in the repo and
-the re-finding of a passage years later are identical for all three, so a
-second table would have been the same code written twice. Only the intent
-differs: a note is something thought, a highlight is the passage kept without
-a word said about it, a question is something to go and find out.
+**Four things, one record.** A note, a bookmark, a highlight and a question
+are the same row with a different `kind`. Anchoring, syncing, the markdown in
+the repo and the re-finding of a passage years later are identical for all
+four, so a second table would have been the same code written twice. Only the
+intent differs: a note is something thought, a bookmark is the passage kept
+without a word said about it, a highlight is the passage in a colour that
+means something, a question is something to go and find out.
+
+**Five colours, and somewhere to say what they mean.** Five is where Apple
+Books landed; Kindle's four are the most common complaint made about it. The
+colours are theme tokens rather than fixed values, because the yellow that
+sits well on white is mud on a dark page.
+
+Every reading app puts a row of swatches at the selection and every one of
+them stops there, which leaves what a colour means in your head — and every
+guide to colour-coding says the same thing, that a system you do not write
+down is one you stop keeping. So the swatches carry names, `⋯` opens the
+place to write them, and the journal lists a highlight under what its colour
+means rather than under the colour. The legend rides in `library.json`: what a
+colour means is a fact about the reader, not about a book, and it has to reach
+the other device along with the marks that use it.
 
 **Questions pile up somewhere you will see them.** A question asked mid-book is
 worth nothing if the only record of it is inside a book you have closed. The
@@ -193,10 +208,14 @@ Storage, so reading carries on through a failed save.
 | | |
 |---|---|
 | `E` or `Ctrl+Enter` | write about the selection |
-| `H` | highlight the selection — press again on it to remove |
-| `Q` | ask a question about the selection |
+| `H` | highlight it — the palette opens, `1`–`5` pick a colour |
+| `B` | bookmark it — press again on it to remove |
+| `Q` | ask a question about it |
 | `Ctrl+Enter` | save |
 | `Esc` | discard |
+
+In the palette, the colour a passage already has picks it off again,
+`Backspace` removes it, and `⋯` is where you say what each colour means.
 
 With nothing selected, `E` and `Q` still attach to the page in view, which is
 the only thing available on a scan with no text layer to select.

@@ -54,6 +54,14 @@ db.version(2)
       .delete();
   });
 
+/* v4 named things what they are. What v3 called a highlight was a passage
+   kept in one colour nobody chose — a bookmark. A highlight is now the thing
+   with a colour on it. */
+const SCHEMA_V4 = {
+  ...SCHEMA_V3,
+  entries: "id, bookId, createdAt, ref, kind, status, color",
+};
+
 /* v3 gave every entry a kind. Everything written before there was anything
    else to write was a note. */
 db.version(3)
@@ -64,6 +72,21 @@ db.version(3)
       .toCollection()
       .modify((e: Record<string, unknown>) => {
         if (e.kind === undefined) e.kind = "note";
+      });
+  });
+
+/* What v3 stored as a highlight was a mark in a colour nobody picked. That is
+   a bookmark, and calling it one leaves the word free for the thing that does
+   have a colour on it. Nothing is lost: every mark made before this keeps its
+   passage, its page and its date, under the name it should have had. */
+db.version(4)
+  .stores(SCHEMA_V4)
+  .upgrade(async (tx) => {
+    await tx
+      .table("entries")
+      .toCollection()
+      .modify((e: Record<string, unknown>) => {
+        if (e.kind === "highlight") e.kind = "bookmark";
       });
   });
 

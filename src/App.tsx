@@ -4,6 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 
 import { db } from "./lib/db";
 import { localDayKey, streakFrom } from "./lib/dates";
+import { isMark } from "./lib/types";
 import Dashboard from "./routes/Dashboard";
 import Library from "./routes/Library";
 import Questions from "./routes/Questions";
@@ -23,11 +24,9 @@ export default function App() {
     if (entries !== undefined) setReady(true);
   }, [entries]);
 
-  /* A highlight is not a day's writing — it costs one keystroke and saying it
-     kept a streak alive would make the streak worth nothing. */
   const streak = useMemo(() => {
     if (!entries) return 0;
-    const written = entries.filter((e) => e.kind !== "highlight");
+    const written = entries.filter((e) => !isMark(e.kind));
     return streakFrom(new Set(written.map((e) => localDayKey(e.createdAt))));
   }, [entries]);
 

@@ -12,14 +12,25 @@ import {
   loadBookBytes,
   loadBookText,
   rememberLocation,
+  readLegend,
+  recolorMark,
+  removeMark,
   saveEntry,
-  saveHighlight,
-  unhighlight,
+  saveMark,
+  writeLegend,
 } from "../lib/store";
 import { openPdf, type PDFDocumentProxy } from "../lib/text/pdf";
 import { clock, useFocus, BREAK_SECONDS, WORK_SECONDS } from "../hooks/useFocus";
 import { usePrefs } from "../hooks/usePrefs";
-import type { BookText, Entry, EntryKind } from "../lib/types";
+import HighlightPalette from "../components/HighlightPalette";
+import type {
+  Anchor,
+  BookText,
+  Entry,
+  EntryKind,
+  HighlightColor,
+  Legend,
+} from "../lib/types";
 
 import BookPageCard, { type Mark } from "../components/BookPane";
 import PdfPageCard from "../components/PdfPageCard";
@@ -51,6 +62,18 @@ export default function Reader() {
   const [pageField, setPageField] = useState("");
   const [jump, setJump] = useState<{ index: number; token: number } | null>(null);
   const [draft, setDraft] = useState<ComposerDraft | null>(null);
+  const [palette, setPalette] = useState<{
+    at: { left: number; top: number; bottom: number };
+    anchor: Anchor;
+    exact: string;
+    existingId?: string;
+    current?: HighlightColor;
+  } | null>(null);
+  const [legend, setLegend] = useState<Legend>({});
+
+  useEffect(() => {
+    void readLegend().then(setLegend);
+  }, []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const jumpToken = useRef(0);
@@ -133,12 +156,14 @@ export default function Reader() {
     const out: PaintItem[] = [];
     for (const e of entries) {
       if (!e.excerpt || e.anchor.kind !== "quote") continue;
-      const name =
+      const name: PaintItem["name"] | null =
         e.kind === "highlight"
-          ? ("read-highlight" as const)
-          : e.kind === "question" && e.status !== "answered"
-            ? ("read-question" as const)
-            : null;
+          ? (`read-hl-${e.color ?? 1}` as PaintItem["name"])
+          : e.kind === "bookmark"
+            ? "read-bookmark"
+            : e.kind === "question" && e.status !== "answered"
+              ? "read-question"
+              : null;
       if (!name) continue;
       /* Where it was taken from, so the phrase is marked there and not
          wherever else in the book the same words happen to appear. */
@@ -253,29 +278,73 @@ export default function Reader() {
     [bookId, text, pageIndex],
   );
 
-  /* Highlighting takes no cursor and asks nothing. Pressing it again on a
-     passage already highlighted takes the highlight off, so the same key
-     both makes and unmakes the mark. */
-  const toggleHighlight = useCallback(async () => {
+  /* Bookmarking takes no cursor and asks nothing — it says "this" and stops.
+     Pressing it again on a bookmarked passage takes the bookmark off, so the
+     same key both makes and unmakes the mark. */
+  const toggleBookmark = useCallback(async () => {
     if (!text) return;
     const found = anchorFromSelection(bookId, text);
     window.getSelection()?.removeAllRanges();
     if (!found) return;
 
     const existing = (entries ?? []).find(
-      (e) => e.kind === "highlight" && e.excerpt === found.exact,
+      (e) => e.kind === "bookmark" && e.excerpt === found.exact,
     );
     if (existing) {
-      await unhighlight(existing.id);
+      await removeMark(existing.id);
       return;
     }
     const offset = found.anchor.kind === "free" ? 0 : found.anchor.offset;
-    await saveHighlight(bookId, found.anchor, found.exact, labelFor(text, offset));
+    await saveMark(bookId, found.anchor, found.exact, labelFor(text, offset));
   }, [bookId, text, entries]);
+
+  /* Highlighting asks one thing: which colour. The palette opens on the
+     selection, and the selection is held onto rather than cleared, because
+     the passage has not been marked yet and losing it to a stray click would
+     lose the thing being coloured. */
+  const openPalette = useCallback(() => {
+    if (!text) return;
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+    const found = anchorFromSelection(bookId, text);
+    if (!found) return;
+
+    const box = sel.getRangeAt(0).getBoundingClientRect();
+    const existing = (entries ?? []).find(
+      (e) => e.kind === "highlight" && e.excerpt === found.exact,
+    );
+
+    setPalette({
+      at: { left: box.left + box.width / 2, top: box.top, bottom: box.bottom },
+      anchor: found.anchor,
+      exact: found.exact,
+      existingId: existing?.id,
+      current: existing?.color,
+    });
+  }, [bookId, text, entries]);
+
+  const pickColor = useCallback(
+    async (color: HighlightColor) => {
+      const p = palette;
+      if (!p || !text) return;
+      setPalette(null);
+      window.getSelection()?.removeAllRanges();
+
+      if (p.existingId) {
+        /* The colour it already has, chosen again, means take it off. */
+        if (p.current === color) await removeMark(p.existingId);
+        else await recolorMark(p.existingId, color);
+        return;
+      }
+      const offset = p.anchor.kind === "free" ? 0 : p.anchor.offset;
+      await saveMark(bookId, p.anchor, p.exact, labelFor(text, offset), color);
+    },
+    [palette, bookId, text],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (draft) return; // the composer owns the keyboard while it is open
+      if (draft || palette) return; // the composer and the palette own the keyboard
       const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase() ?? "";
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       if (e.ctrlKey || e.metaKey) {
@@ -296,14 +365,19 @@ export default function Reader() {
         openComposer("question");
         return;
       }
+      if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        void toggleBookmark();
+        return;
+      }
       if (e.key === "h" || e.key === "H") {
         e.preventDefault();
-        void toggleHighlight();
+        openPalette();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [draft, openComposer, toggleHighlight]);
+  }, [draft, palette, openComposer, toggleBookmark, openPalette]);
 
   async function save(v: { title: string; body: string; source: Entry["source"] }) {
     if (!draft) return;
@@ -634,6 +708,7 @@ export default function Reader() {
             ) : (
               <JournalPane
                 entries={sorted}
+                legend={legend}
                 onNew={() => setDraft({ kind: "note", anchor: { kind: "free" } })}
                 onJump={jumpToEntry}
               />
@@ -641,6 +716,26 @@ export default function Reader() {
           </section>
         </Panel>
       </PanelGroup>
+
+      {palette && (
+        <HighlightPalette
+          at={palette.at}
+          current={palette.current}
+          legend={legend}
+          onPick={(c) => void pickColor(c)}
+          onRemove={() => {
+            const id = palette.existingId;
+            setPalette(null);
+            window.getSelection()?.removeAllRanges();
+            if (id) void removeMark(id);
+          }}
+          onLegend={(next) => {
+            setLegend(next);
+            void writeLegend(next);
+          }}
+          onClose={() => setPalette(null)}
+        />
+      )}
     </main>
   );
 }

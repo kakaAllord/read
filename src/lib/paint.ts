@@ -211,10 +211,29 @@ function rangeFor(flat: Flat, quote: string, offset: number): Range | null {
   return range;
 }
 
-export type HighlightName = "read-highlight" | "read-question";
+export type HighlightName =
+  | "read-bookmark"
+  | "read-question"
+  | "read-hl-1"
+  | "read-hl-2"
+  | "read-hl-3"
+  | "read-hl-4"
+  | "read-hl-5";
+
 export type PaintItem = { quote: string; offset: number; name: HighlightName };
 
-const NAMES: HighlightName[] = ["read-highlight", "read-question"];
+/* Every name that has a ::highlight() rule. Listed rather than derived so
+   that a name with no ranges this frame is cleared rather than left painting
+   the last thing it painted. */
+const NAMES: HighlightName[] = [
+  "read-bookmark",
+  "read-question",
+  "read-hl-1",
+  "read-hl-2",
+  "read-hl-3",
+  "read-hl-4",
+  "read-hl-5",
+];
 
 export function supported(): boolean {
   return typeof CSS !== "undefined" && "highlights" in CSS;

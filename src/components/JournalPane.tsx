@@ -1,10 +1,11 @@
 import { shortDate } from "../lib/dates";
-import type { Entry } from "../lib/types";
+import { COLOR_NAMES, type Entry, type Legend } from "../lib/types";
 
 const muted = (pct: number) => `color-mix(in srgb, var(--color-text) ${pct}%, transparent)`;
 
 type Props = {
   entries: Entry[];
+  legend: Legend;
   onNew: () => void;
   onJump: (entry: Entry) => void;
 };
@@ -12,14 +13,20 @@ type Props = {
 /* What a passage was marked with, said in the fewest words that distinguish
    it. A highlight has no heading of its own — it is the passage — so the
    quote below carries it and this only says why it is there. */
-function labelOf(e: Entry): string | null {
-  if (e.kind === "highlight") return "Highlight";
+function labelOf(e: Entry, legend: Legend): string | null {
+  if (e.kind === "bookmark") return "Bookmark";
+  if (e.kind === "highlight") {
+    const c = e.color ?? 1;
+    /* What the colour was decided to mean, where that has been decided, and
+       the colour's own name where it has not. */
+    return legend[c] ?? COLOR_NAMES[c];
+  }
   if (e.kind === "question") return e.status === "answered" ? "Answered" : "Question";
   return null;
 }
 
 /* Book view: everything written against this book, newest first. */
-export default function JournalPane({ entries, onNew, onJump }: Props) {
+export default function JournalPane({ entries, legend, onNew, onJump }: Props) {
   const count = entries.length === 1 ? "1 entry" : `${entries.length} entries`;
 
   return (
@@ -84,7 +91,7 @@ export default function JournalPane({ entries, onNew, onJump }: Props) {
             <div
               style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10 }}
             >
-              {e.kind === "highlight" ? (
+              {e.kind === "highlight" || e.kind === "bookmark" ? (
                 <div
                   style={{
                     flex: 1,
@@ -95,7 +102,20 @@ export default function JournalPane({ entries, onNew, onJump }: Props) {
                     color: muted(45),
                   }}
                 >
-                  {labelOf(e)}
+                  {e.kind === "highlight" && (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: 9,
+                        height: 9,
+                        borderRadius: "50%",
+                        marginRight: 7,
+                        verticalAlign: "baseline",
+                        background: `var(--hl-${e.color ?? 1})`,
+                      }}
+                    />
+                  )}
+                  {labelOf(e, legend)}
                 </div>
               ) : (
                 <h4 style={{ fontWeight: 400, fontSize: 21, margin: 0, flex: 1, minWidth: 0 }}>
@@ -112,7 +132,7 @@ export default function JournalPane({ entries, onNew, onJump }: Props) {
                       e.status === "answered" ? muted(42) : "var(--color-accent-700)",
                   }}
                 >
-                  {labelOf(e)}
+                  {labelOf(e, legend)}
                 </div>
               )}
               <div

@@ -15,8 +15,10 @@ that may be re-parsed, and how a highlight is painted without wrapping the DOM.
 - Offsets into the book's normalized text are how anything anchors to a
   passage. Never a page coordinate — those do not survive reflow, a font-size
   change or a resize.
-- A note, a highlight and a question are one record with a different `kind`.
-  Anything that anchors, syncs or renders to markdown treats them alike.
+- A note, a bookmark, a highlight and a question are one record with a
+  different `kind`. Anything that anchors, syncs or renders to markdown treats
+  them alike. A bookmark and a highlight are marks, not writing: they count
+  towards no streak and appear in no list of what was written.
 - IndexedDB is written immediately and always. The repo is written on Save,
   except a book's file, which goes up as soon as it is added.
 - No EPUB. PDFs only.
