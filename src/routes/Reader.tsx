@@ -129,17 +129,25 @@ export default function Reader() {
      exact words they were taken from. A note keeps the gentler block tint it
      has always had: it is about the passage, not a mark on it. */
   const painted: PaintItem[] = useMemo(() => {
-    if (!entries) return [];
+    if (!entries || !text) return [];
     const out: PaintItem[] = [];
     for (const e of entries) {
-      if (!e.excerpt) continue;
-      if (e.kind === "highlight") out.push({ quote: e.excerpt, name: "read-highlight" });
-      else if (e.kind === "question" && e.status !== "answered") {
-        out.push({ quote: e.excerpt, name: "read-question" });
-      }
+      if (!e.excerpt || e.anchor.kind !== "quote") continue;
+      const name =
+        e.kind === "highlight"
+          ? ("read-highlight" as const)
+          : e.kind === "question" && e.status !== "answered"
+            ? ("read-question" as const)
+            : null;
+      if (!name) continue;
+      /* Where it was taken from, so the phrase is marked there and not
+         wherever else in the book the same words happen to appear. */
+      const at = resolveAnchor(e.anchor, text);
+      if (at === null) continue;
+      out.push({ quote: e.excerpt, offset: at, name });
     }
     return out;
-  }, [entries]);
+  }, [entries, text]);
 
   usePainted(scrollRef, painted, !!text);
 

@@ -1,3 +1,5 @@
+import { OFFSET_ATTR } from "./anchors";
+
 /* Painting a stored passage back onto the page.
  *
  * The obvious way is to wrap the words in <mark> elements, and it is the
@@ -16,6 +18,15 @@
  * search through the rendered text — the same thing Hypothesis does, and for
  * the same reason: the document the quote came from is not guaranteed to be
  * laid out the way it was when the quote was taken.
+ *
+ * But a quote is not unique. "the same thing" occurs on a hundred pages, and
+ * painting every occurrence of it puts a highlight everywhere the phrase
+ * appears rather than on the sentence that was marked. So the search is
+ * disambiguated by where the passage came from: every rendered character
+ * carries an estimate of its offset into the book, taken from the nearest
+ * enclosing element that knows its own, and the occurrence nearest the stored
+ * offset is the one painted. One mark per thing marked, in the place it was
+ * made.
  */
 
 const LIGATURES: Record<string, string> = {
@@ -42,34 +53,79 @@ const FOLDED: Record<string, string> = {
   "­": "",
 };
 
-/* The rendered text, folded the way the extraction folded it, with every
-   character remembering the text node it came from. A ligature is one
-   character on the page and two in the stored quote, so the map is kept per
-   character rather than per node. */
-type Flat = { text: string; nodes: Text[]; offsets: number[] };
+/* How far the occurrence found may sit from where the passage was taken
+   before it is treated as a different passage that happens to read the same.
+   A page is a couple of thousand characters, so a correct match is out by at
+   most the running heads and folios the extraction stripped; anything a page
+   away is a different sentence. */
+const MAX_DRIFT = 4000;
+
+/* The rendered text, folded the way the extraction folded it. Every character
+   remembers the text node it came from — a ligature is one character on the
+   page and two in the stored quote, so the map is kept per character rather
+   than per node — and what its offset into the book is thought to be. */
+type Flat = { text: string; nodes: Text[]; offsets: number[]; at: number[] };
+
+/** The nearest enclosing element that knows its own offset into the book. */
+function ownerOf(node: Node, root: HTMLElement): HTMLElement | null {
+  let el = node.parentElement;
+  while (el) {
+    if (el.hasAttribute(OFFSET_ATTR)) return el;
+    if (el === root) return null;
+    el = el.parentElement;
+  }
+  return null;
+}
 
 function flatten(root: HTMLElement): Flat {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let text = "";
   const nodes: Text[] = [];
   const offsets: number[] = [];
+  const at: number[] = [];
   let space = true; /* leading whitespace is not worth a position */
 
-  const put = (ch: string, node: Text, at: number) => {
+  let holder: HTMLElement | null = null;
+  let base = 0;
+  let started = 0;
+
+  const put = (ch: string, node: Text, index: number) => {
+    at.push(base + (text.length - started));
     text += ch;
     nodes.push(node);
-    offsets.push(at);
+    offsets.push(index);
   };
 
   let cur: Node | null;
   while ((cur = walker.nextNode())) {
     const node = cur as Text;
+
+    const owner = ownerOf(node, root);
+
+    /* Page furniture — the running head and the folio printed on the card —
+       belongs to no block and is not part of the book's text. Leaving it in
+       would let a quote match against a chapter title. */
+    if (!owner) continue;
+
+    if (owner !== holder) {
+      /* A new paragraph, or a new page. Two blocks that merely abut in the
+         DOM are not one run of prose, and without a break between them a
+         quote could match across the seam and mark words from both. */
+      if (text && !space) {
+        put(" ", node, 0);
+        space = true;
+      }
+      holder = owner;
+      base = Number(owner.getAttribute(OFFSET_ATTR));
+      started = text.length;
+    }
+
     const raw = node.data;
     for (let i = 0; i < raw.length; i++) {
       const ch = raw[i];
       if (/\s/.test(ch)) {
-        /* A run of whitespace — including the line breaks pdf.js puts
-           between spans — is one space, which is what the quote has. */
+        /* A run of whitespace — including the line breaks pdf.js puts between
+           its spans — is one space, which is what the quote has. */
         if (!space) put(" ", node, i);
         space = true;
         continue;
@@ -79,7 +135,7 @@ function flatten(root: HTMLElement): Flat {
       for (const out of folded) put(out, node, i);
     }
   }
-  return { text, nodes, offsets };
+  return { text, nodes, offsets, at };
 }
 
 /**
@@ -116,31 +172,47 @@ function matchAt(flat: string, quote: string, from: number): number {
   return i;
 }
 
-function rangesFor(flat: Flat, quote: string): Range[] {
-  const out: Range[] = [];
-  if (!quote) return out;
+/** The one occurrence of `quote` that is where `offset` says it should be. */
+function rangeFor(flat: Flat, quote: string, offset: number): Range | null {
+  if (!quote) return null;
+
+  let bestAt = -1;
+  let bestEnd = -1;
+  let bestDrift = Infinity;
+
   let from = 0;
   for (;;) {
-    const at = flat.text.indexOf(quote[0], from);
-    if (at < 0) break;
-    const end = matchAt(flat.text, quote, at);
-    if (end > at) {
-      const range = document.createRange();
-      range.setStart(flat.nodes[at], flat.offsets[at]);
-      const last = end - 1;
-      const node = flat.nodes[last];
-      range.setEnd(node, Math.min(node.data.length, flat.offsets[last] + 1));
-      out.push(range);
+    const found = flat.text.indexOf(quote[0], from);
+    if (found < 0) break;
+    const end = matchAt(flat.text, quote, found);
+    if (end > found) {
+      const drift = Math.abs(flat.at[found] - offset);
+      if (drift < bestDrift) {
+        bestDrift = drift;
+        bestAt = found;
+        bestEnd = end;
+      }
       from = end;
     } else {
-      from = at + 1;
+      from = found + 1;
     }
   }
-  return out;
+
+  /* Every occurrence on screen is somewhere else in the book: the page this
+     passage belongs to is not rendered, and marking the nearest lookalike
+     would be worse than marking nothing. */
+  if (bestAt < 0 || bestDrift > MAX_DRIFT) return null;
+
+  const range = document.createRange();
+  range.setStart(flat.nodes[bestAt], flat.offsets[bestAt]);
+  const last = bestEnd - 1;
+  const node = flat.nodes[last];
+  range.setEnd(node, Math.min(node.data.length, flat.offsets[last] + 1));
+  return range;
 }
 
-export type PaintItem = { quote: string; name: HighlightName };
 export type HighlightName = "read-highlight" | "read-question";
+export type PaintItem = { quote: string; offset: number; name: HighlightName };
 
 const NAMES: HighlightName[] = ["read-highlight", "read-question"];
 
@@ -150,8 +222,8 @@ export function supported(): boolean {
 
 /**
  * Repaint every stored passage currently on screen. Called after a render and
- * whenever the reader scrolls a new page in, because the pages are
- * virtualised and the text layer is rebuilt each time.
+ * whenever the reader scrolls a new page in, because the pages are virtualised
+ * and the text layer is rebuilt each time.
  */
 export function paint(root: HTMLElement | null, items: PaintItem[]): void {
   if (!supported()) return;
@@ -163,11 +235,11 @@ export function paint(root: HTMLElement | null, items: PaintItem[]): void {
   const flat = flatten(root);
   const byName = new Map<HighlightName, Range[]>();
   for (const item of items) {
-    const found = rangesFor(flat, item.quote);
-    if (found.length === 0) continue;
+    const range = rangeFor(flat, item.quote, item.offset);
+    if (!range) continue;
     const list = byName.get(item.name);
-    if (list) list.push(...found);
-    else byName.set(item.name, found);
+    if (list) list.push(range);
+    else byName.set(item.name, [range]);
   }
 
   for (const name of NAMES) {

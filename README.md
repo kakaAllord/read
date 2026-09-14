@@ -171,6 +171,15 @@ the extraction did, and forgives the hyphen a line break left behind — but
 only in that exact shape, so `well-known` is never quietly matched by
 `wellknown`.
 
+A quote is not unique, though, and that is the part worth getting right: "the
+way of a man" occurs on a hundred pages, and painting every occurrence of it
+marks the phrase everywhere rather than the sentence you marked. So every
+rendered character carries an estimate of its offset into the book, taken from
+the nearest element that knows its own, and the occurrence nearest the stored
+offset is the only one painted. If the page a passage came from is not on
+screen, nothing is painted — a lookalike on another page is worse than no mark
+at all.
+
 **Sync.** IndexedDB is the working copy the interface reads from and writes to;
 the repo is where that is put when you say so. A book is one file, so saving
 rewrites only what changed. Every write quotes the blob sha it read, which is
