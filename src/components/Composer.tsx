@@ -1,14 +1,36 @@
 import { useEffect, useRef, useState } from "react";
 import { useSpeech } from "../hooks/useSpeech";
 import { countWords } from "../lib/words";
-import type { Anchor } from "../lib/types";
+import type { Anchor, EntryKind } from "../lib/types";
 
 const muted = (pct: number) => `color-mix(in srgb, var(--color-text) ${pct}%, transparent)`;
 
 export type ComposerDraft = {
+  kind: EntryKind;
   anchor: Anchor;
   excerpt?: string;
   displayLocation?: string;
+};
+
+/* A question is asked, not titled, and what goes under it is only whatever
+   you already half-know. Saying so in the placeholders is the whole of the
+   difference — the same composer, pointed at a different thing. */
+const WORDING: Record<EntryKind, { heading: string; body: string; free: string }> = {
+  note: {
+    heading: "Heading",
+    body: "Write.",
+    free: "Free-standing entry — no passage attached.",
+  },
+  question: {
+    heading: "What do you want to find out?",
+    body: "Anything you already suspect, and where you would start.",
+    free: "Question with no passage attached.",
+  },
+  highlight: {
+    heading: "Heading",
+    body: "Write.",
+    free: "Free-standing entry — no passage attached.",
+  },
 };
 
 type Props = {
@@ -18,6 +40,7 @@ type Props = {
 };
 
 export default function Composer({ draft, onSave, onDiscard }: Props) {
+  const wording = WORDING[draft.kind];
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const typed = useRef(false);
@@ -130,7 +153,7 @@ export default function Composer({ draft, onSave, onDiscard }: Props) {
                 color: muted(45),
               }}
             >
-              Free-standing entry — no passage attached.
+              {wording.free}
             </div>
           )}
 
@@ -141,7 +164,7 @@ export default function Composer({ draft, onSave, onDiscard }: Props) {
               typed.current = true;
               setTitle(e.target.value);
             }}
-            placeholder="Heading"
+            placeholder={wording.heading}
             style={{
               width: "100%",
               border: 0,
@@ -162,7 +185,7 @@ export default function Composer({ draft, onSave, onDiscard }: Props) {
               typed.current = true;
               setBody(e.target.value);
             }}
-            placeholder="Write."
+            placeholder={wording.body}
             style={{
               width: "100%",
               minHeight: 240,
@@ -191,15 +214,15 @@ export default function Composer({ draft, onSave, onDiscard }: Props) {
         }}
       >
         <div
-          onMouseDown={(e) => {
-            e.preventDefault();
-            if (speech.supported) speech.start();
+          onMouseDown={(e) => e.preventDefault() /* keep the caret in the body */}
+          onClick={() => {
+            if (!speech.supported) return;
+            if (listening) speech.stop();
+            else speech.start();
           }}
-          onMouseUp={() => speech.stop()}
-          onMouseLeave={() => speech.stop()}
           title={
             speech.supported
-              ? "Hold to speak — the transcript is stored exactly as it comes back"
+              ? "Press to speak, press again to stop — the transcript is stored exactly as it comes back"
               : "This browser has no speech recognition"
           }
           style={{
@@ -232,7 +255,7 @@ export default function Composer({ draft, onSave, onDiscard }: Props) {
             }}
           />
           <div style={{ whiteSpace: "nowrap" }}>
-            {listening ? "Listening — release to stop" : "Hold to speak"}
+            {listening ? "Listening — press to stop" : "Press to speak"}
           </div>
         </div>
         <div

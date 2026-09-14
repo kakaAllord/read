@@ -42,7 +42,12 @@ export default function Dashboard() {
     const ss = sessions ?? [];
     const prog = progress ?? {};
 
-    const dayKeys = new Set(es.map((e) => localDayKey(e.createdAt)));
+    /* The streak and the recent list are about writing. A highlight is one
+       keystroke and no words, so it belongs to neither — counting it would
+       let a day of marking passages stand in for a day of thinking. */
+    const written = es.filter((e) => e.kind !== "highlight");
+
+    const dayKeys = new Set(written.map((e) => localDayKey(e.createdAt)));
     const streak = streakFrom(dayKeys);
     const longest = longestStreak(dayKeys);
 
@@ -93,7 +98,7 @@ export default function Dashboard() {
         };
       });
 
-    const recent = [...es]
+    const recent = [...written]
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .slice(0, 5)
       .map((e) => ({

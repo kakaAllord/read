@@ -108,9 +108,10 @@ there.
 
 ```
 src/
-  routes/         Dashboard, Library, Reader — the three screens
+  routes/         Dashboard, Library, Questions, Reader — the four screens
   components/     the pieces those screens are built from
   lib/
+    paint.ts      finding a stored quote in the rendered page and marking it
     text/         PDF extraction, view-mode detection, covers
     github/       config, the Contents API client, repo paths
     sync.ts       what gets written up, when, and what comes back down
@@ -141,6 +142,35 @@ gap over 1.4× the median, an indent, or a short previous line. It de-hyphenates
 line breaks, strips running heads and folios, and treats oversized lines as
 headings.
 
+**Three things, one record.** A note, a highlight and a question are the same
+row with a different `kind`. Anchoring, syncing, the markdown in the repo and
+the re-finding of a passage years later are identical for all three, so a
+second table would have been the same code written twice. Only the intent
+differs: a note is something thought, a highlight is the passage kept without
+a word said about it, a question is something to go and find out.
+
+**Questions pile up somewhere you will see them.** A question asked mid-book is
+worth nothing if the only record of it is inside a book you have closed. The
+Questions screen lists the open ones oldest first — the one you have carried
+longest is the one to answer — with the passage that prompted it and a link
+back to the page. Answered ones are kept, not deleted; a list you can only add
+to is a list you stop trusting. The header carries the open count.
+
+**Highlights are painted, not wrapped.** The obvious way to mark a passage is
+to wrap the words in `<mark>`, and it is the wrong way here: page mode's text
+is a pdf.js text layer that is rebuilt on every render, so anything wrapped
+around it is destroyed on the next scroll, and wrapping splits text nodes that
+the anchoring code reads back. `lib/paint.ts` uses the CSS Custom Highlight
+API instead — `Range` objects registered in `CSS.highlights`, styled by a
+`::highlight()` rule, touching no DOM at all.
+
+Because what is stored is the quote and not a coordinate, marking it again is
+a search through the rendered text, the way Hypothesis anchors an annotation
+and for the same reason. The search folds ligatures and smart quotes the way
+the extraction did, and forgives the hyphen a line break left behind — but
+only in that exact shape, so `well-known` is never quietly matched by
+`wellknown`.
+
 **Sync.** IndexedDB is the working copy the interface reads from and writes to;
 the repo is where that is put when you say so. A book is one file, so saving
 rewrites only what changed. Every write quotes the blob sha it read, which is
@@ -153,14 +183,21 @@ Storage, so reading carries on through a failed save.
 
 | | |
 |---|---|
-| `E` or `Ctrl+Enter` | open the composer on the selection |
-| `Ctrl+Enter` | save the entry |
-| `Esc` | discard it |
+| `E` or `Ctrl+Enter` | write about the selection |
+| `H` | highlight the selection — press again on it to remove |
+| `Q` | ask a question about the selection |
+| `Ctrl+Enter` | save |
+| `Esc` | discard |
+
+With nothing selected, `E` and `Q` still attach to the page in view, which is
+the only thing available on a scan with no text layer to select.
 
 ## Notes on the build
 
 - The reader virtualises pages, so a 1,200-page book keeps a handful of cards in
   the DOM. Heights start as an estimate and are replaced as pages render.
+- Dictation is press-to-start, press-to-stop. Holding a button down for the
+  length of a thought is a thing you notice doing.
 - Speech asks for on-device recognition (`processLocally`) so audio does not go
   to a web service, and stores the transcript raw — no auto-punctuation.
 - Themes retune the design system's tokens rather than overriding components,

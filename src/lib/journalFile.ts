@@ -9,7 +9,19 @@ const OPEN = "<!-- read ";
 const CLOSE = " -->";
 const END = "<!-- /read -->";
 
-type Meta = Omit<Entry, "body"> & { bookTitle?: string };
+type Meta = Omit<Entry, "body" | "kind"> & { kind?: Entry["kind"]; bookTitle?: string };
+
+/* A heading a person can scan down. A question keeps its question mark and
+   says whether it is still open; a highlight has nothing written on it, so it
+   is named by where it came from. */
+function headingFor(e: Entry): string {
+  if (e.kind === "highlight") return e.displayLocation || "Highlight";
+  if (e.kind === "question") {
+    const asked = e.title || "Untitled";
+    return e.status === "answered" ? `${asked} — answered` : asked;
+  }
+  return e.title || "Untitled";
+}
 
 export function renderEntries(
   heading: string,
@@ -22,6 +34,7 @@ export function renderEntries(
   for (const e of sorted) {
     const meta: Meta = {
       id: e.id,
+      kind: e.kind,
       bookId: e.bookId,
       title: e.title,
       ref: e.ref,
@@ -31,11 +44,13 @@ export function renderEntries(
       wordCount: e.wordCount,
       source: e.source,
       tags: e.tags,
+      status: e.status,
+      answeredAt: e.answeredAt,
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
       bookTitle: titleOf(e.bookId),
     };
-    lines.push(`## ${e.title || "Untitled"}`, "");
+    lines.push(`## ${headingFor(e)}`, "");
     lines.push(OPEN + JSON.stringify(meta) + CLOSE, "");
     if (e.excerpt) {
       lines.push(...e.excerpt.split("\n").map((l) => `> ${l}`), "");
@@ -81,6 +96,8 @@ export function parseEntries(markdown: string): Entry[] {
 
     out.push({
       id: meta.id,
+      /* Written before there was anything else to write. */
+      kind: meta.kind ?? "note",
       bookId: meta.bookId,
       title: meta.title,
       ref: meta.ref,
@@ -91,6 +108,8 @@ export function parseEntries(markdown: string): Entry[] {
       wordCount: meta.wordCount,
       source: meta.source,
       tags: meta.tags ?? [],
+      status: meta.status,
+      answeredAt: meta.answeredAt,
       createdAt: meta.createdAt,
       updatedAt: meta.updatedAt,
     });

@@ -9,6 +9,15 @@ type Props = {
   onJump: (entry: Entry) => void;
 };
 
+/* What a passage was marked with, said in the fewest words that distinguish
+   it. A highlight has no heading of its own — it is the passage — so the
+   quote below carries it and this only says why it is there. */
+function labelOf(e: Entry): string | null {
+  if (e.kind === "highlight") return "Highlight";
+  if (e.kind === "question") return e.status === "answered" ? "Answered" : "Question";
+  return null;
+}
+
 /* Book view: everything written against this book, newest first. */
 export default function JournalPane({ entries, onNew, onJump }: Props) {
   const count = entries.length === 1 ? "1 entry" : `${entries.length} entries`;
@@ -56,7 +65,8 @@ export default function JournalPane({ entries, onNew, onJump }: Props) {
               color: muted(50),
             }}
           >
-            Nothing written against this book yet. Select a passage on the left and press E.
+            Nothing written against this book yet. Select a passage on the left and press E to
+            write about it, H to highlight it, or Q to ask something you want to go and find out.
           </div>
         )}
 
@@ -74,9 +84,37 @@ export default function JournalPane({ entries, onNew, onJump }: Props) {
             <div
               style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 10 }}
             >
-              <h4 style={{ fontWeight: 400, fontSize: 21, margin: 0, flex: 1, minWidth: 0 }}>
-                {e.title || "Untitled"}
-              </h4>
+              {e.kind === "highlight" ? (
+                <div
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    fontSize: 11,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: muted(45),
+                  }}
+                >
+                  {labelOf(e)}
+                </div>
+              ) : (
+                <h4 style={{ fontWeight: 400, fontSize: 21, margin: 0, flex: 1, minWidth: 0 }}>
+                  {e.title || "Untitled"}
+                </h4>
+              )}
+              {e.kind === "question" && (
+                <div
+                  style={{
+                    fontSize: 10.5,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    color:
+                      e.status === "answered" ? muted(42) : "var(--color-accent-700)",
+                  }}
+                >
+                  {labelOf(e)}
+                </div>
+              )}
               <div
                 style={{
                   fontSize: 11,

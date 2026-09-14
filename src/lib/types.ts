@@ -26,8 +26,24 @@ export type Anchor =
   | { kind: "location"; bookId: string; offset: number }
   | { kind: "free" };
 
+/* Three things get written against a passage, and they are the same record
+   with different intent:
+
+     note       something thought while reading
+     highlight  the passage itself, kept without a word said about it
+     question   something to go and find out, which stays open until it is not
+
+   One type, because anchoring, syncing, the markdown in the repo and the
+   re-finding of a passage years later are identical for all three, and a
+   second table would be the same code written twice. */
+export type EntryKind = "note" | "highlight" | "question";
+
+/** Questions, and only questions, are open until they are answered. */
+export type QuestionStatus = "open" | "answered";
+
 export type Entry = {
   id: string;
+  kind: EntryKind;
   bookId?: string;
   title?: string;
   ref?: string;
@@ -38,6 +54,8 @@ export type Entry = {
   wordCount: number;
   source: "typed" | "spoken" | "mixed";
   tags: string[];
+  status?: QuestionStatus;
+  answeredAt?: string;
   createdAt: string; // ISO UTC
   updatedAt: string;
 };

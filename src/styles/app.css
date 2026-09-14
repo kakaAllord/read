@@ -116,4 +116,26 @@ a:hover { color: var(--color-accent-700); }
 /* A line break between spans is structure, not something to paint. */
 .textLayer br::selection { background: transparent; }
 
+/* Highlights are painted through the CSS Custom Highlight API, so these
+   ranges exist in no element and the rules have to be named rather than
+   selected. Only background-color and color apply to ::highlight(), which is
+   why there is no underline or border here — and why it works over the
+   transparent text of a drawn page, where a background is the only thing
+   that could show anyway.
+
+   Colour-mixed against the page rather than fixed, so sepia and night get a
+   highlight that belongs to them instead of a yellow stuck on top. */
+::highlight(read-highlight) {
+  background-color: color-mix(in srgb, var(--color-accent) 26%, transparent);
+}
+
+/* A question still waiting on an answer is a different mark from a passage
+   you simply wanted to keep, so it takes the second accent rather than a
+   paler version of the first. `color` is deliberately not set: over a drawn
+   page the text is transparent on purpose, and giving it one would print a
+   second copy of the words on top of the scanned ink. */
+::highlight(read-question) {
+  background-color: color-mix(in srgb, var(--color-accent-2) 30%, transparent);
+}
+
 .spin { animation: breathe 1.6s ease-in-out infinite; }

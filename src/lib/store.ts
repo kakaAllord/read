@@ -11,7 +11,7 @@ import { cacheBook, cachedBook } from "./cache";
 import { pathOf } from "./github/paths";
 import { fetchBook, markBookChanged, markLibraryChanged, noteEntrySaved, pushNewBook } from "./sync";
 import { connected } from "./github/config";
-import type { Anchor, Book, BookText, Entry } from "./types";
+import type { Anchor, Book, BookText, Entry, EntryKind, QuestionStatus } from "./types";
 
 export type Probe = {
   bytes: ArrayBuffer;
@@ -158,6 +158,7 @@ export async function loadBookBytes(book: Book): Promise<ArrayBuffer> {
 
 export type Draft = {
   bookId?: string;
+  kind: EntryKind;
   title: string;
   body: string;
   anchor: Anchor;
@@ -170,6 +171,7 @@ export async function saveEntry(draft: Draft): Promise<Entry> {
   const now = new Date().toISOString();
   const entry: Entry = {
     id: newId("e"),
+    kind: draft.kind,
     bookId: draft.bookId,
     title: draft.title.trim() || undefined,
     ref: parseRef(draft.title),
@@ -180,12 +182,64 @@ export async function saveEntry(draft: Draft): Promise<Entry> {
     wordCount: countWords(draft.body),
     source: draft.source,
     tags: [],
+    /* A question is the only kind with anywhere left to go. */
+    status: draft.kind === "question" ? "open" : undefined,
     createdAt: now,
     updatedAt: now,
   };
   await db.entries.put(entry);
   noteEntrySaved(entry);
   return entry;
+}
+
+/**
+ * A highlight is the passage and nothing else — no title, no body, no cursor
+ * taken away from the page. It is the cheapest thing you can do to a sentence
+ * that you want to be able to find again.
+ */
+export async function saveHighlight(
+  bookId: string,
+  anchor: Anchor,
+  excerpt: string,
+  displayLocation: string,
+): Promise<Entry> {
+  const now = new Date().toISOString();
+  const entry: Entry = {
+    id: newId("h"),
+    kind: "highlight",
+    bookId,
+    body: "",
+    anchor,
+    excerpt,
+    displayLocation,
+    wordCount: 0,
+    source: "typed",
+    tags: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.entries.put(entry);
+  noteEntrySaved(entry);
+  return entry;
+}
+
+/** Pressing H on a passage already highlighted takes the highlight off. */
+export async function unhighlight(id: string): Promise<void> {
+  const entry = await db.entries.get(id);
+  if (!entry) return;
+  await db.entries.delete(id);
+  noteEntrySaved(entry);
+}
+
+export async function setQuestionStatus(id: string, status: QuestionStatus): Promise<void> {
+  const entry = await db.entries.get(id);
+  if (!entry) return;
+  await db.entries.update(id, {
+    status,
+    answeredAt: status === "answered" ? new Date().toISOString() : undefined,
+    updatedAt: new Date().toISOString(),
+  });
+  noteEntrySaved({ ...entry, status });
 }
 
 export type Progress = { page: number; pageCount: number };

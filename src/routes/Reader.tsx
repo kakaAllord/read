@@ -5,11 +5,21 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 
 import { db } from "../lib/db";
 import { anchorFromSelection, pageAt, resolveAnchor } from "../lib/anchors";
-import { labelFor, loadBookBytes, loadBookText, rememberLocation, saveEntry } from "../lib/store";
+import { usePainted } from "../hooks/usePainted";
+import type { PaintItem } from "../lib/paint";
+import {
+  labelFor,
+  loadBookBytes,
+  loadBookText,
+  rememberLocation,
+  saveEntry,
+  saveHighlight,
+  unhighlight,
+} from "../lib/store";
 import { openPdf, type PDFDocumentProxy } from "../lib/text/pdf";
 import { clock, useFocus, BREAK_SECONDS, WORK_SECONDS } from "../hooks/useFocus";
 import { usePrefs } from "../hooks/usePrefs";
-import type { BookText, Entry } from "../lib/types";
+import type { BookText, Entry, EntryKind } from "../lib/types";
 
 import BookPageCard, { type Mark } from "../components/BookPane";
 import PdfPageCard from "../components/PdfPageCard";
@@ -115,6 +125,24 @@ export default function Reader() {
     return out;
   }, [text, entries]);
 
+  /* Highlights, and questions still waiting on an answer, painted over the
+     exact words they were taken from. A note keeps the gentler block tint it
+     has always had: it is about the passage, not a mark on it. */
+  const painted: PaintItem[] = useMemo(() => {
+    if (!entries) return [];
+    const out: PaintItem[] = [];
+    for (const e of entries) {
+      if (!e.excerpt) continue;
+      if (e.kind === "highlight") out.push({ quote: e.excerpt, name: "read-highlight" });
+      else if (e.kind === "question" && e.status !== "answered") {
+        out.push({ quote: e.excerpt, name: "read-question" });
+      }
+    }
+    return out;
+  }, [entries]);
+
+  usePainted(scrollRef, painted, !!text);
+
   const chapterPages = useMemo(() => {
     if (!text) return new Map<string, number>();
     const map = new Map<string, number>();
@@ -189,28 +217,53 @@ export default function Reader() {
   );
 
   /* — the core interaction: select, one key, write — */
-  const openComposer = useCallback(() => {
+  const openComposer = useCallback(
+    (kind: EntryKind = "note") => {
+      if (!text) return;
+      const found = anchorFromSelection(bookId, text);
+      if (found) {
+        const offset = found.anchor.kind === "free" ? 0 : found.anchor.offset;
+        setDraft({
+          kind,
+          anchor: found.anchor,
+          excerpt: found.exact,
+          displayLocation: labelFor(text, offset),
+        });
+      } else {
+        /* Nothing selected, or a scan with no text to select. The entry is
+           still pinned to the page in view and labelled with it, so writing
+           about a page you cannot select a word on still comes back here. */
+        const offset = text.pages[pageIndex]?.offset ?? 0;
+        setDraft({
+          kind,
+          anchor: { kind: "location", bookId, offset },
+          displayLocation: labelFor(text, offset),
+        });
+      }
+      window.getSelection()?.removeAllRanges();
+    },
+    [bookId, text, pageIndex],
+  );
+
+  /* Highlighting takes no cursor and asks nothing. Pressing it again on a
+     passage already highlighted takes the highlight off, so the same key
+     both makes and unmakes the mark. */
+  const toggleHighlight = useCallback(async () => {
     if (!text) return;
     const found = anchorFromSelection(bookId, text);
-    if (found) {
-      const offset = found.anchor.kind === "free" ? 0 : found.anchor.offset;
-      setDraft({
-        anchor: found.anchor,
-        excerpt: found.exact,
-        displayLocation: labelFor(text, offset),
-      });
-    } else {
-      /* Nothing selected, or a scan with no text to select. The entry is
-         still pinned to the page in view and labelled with it, so writing
-         about a page you cannot select a word on still comes back here. */
-      const offset = text.pages[pageIndex]?.offset ?? 0;
-      setDraft({
-        anchor: { kind: "location", bookId, offset },
-        displayLocation: labelFor(text, offset),
-      });
-    }
     window.getSelection()?.removeAllRanges();
-  }, [bookId, text, pageIndex]);
+    if (!found) return;
+
+    const existing = (entries ?? []).find(
+      (e) => e.kind === "highlight" && e.excerpt === found.exact,
+    );
+    if (existing) {
+      await unhighlight(existing.id);
+      return;
+    }
+    const offset = found.anchor.kind === "free" ? 0 : found.anchor.offset;
+    await saveHighlight(bookId, found.anchor, found.exact, labelFor(text, offset));
+  }, [bookId, text, entries]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -220,19 +273,29 @@ export default function Reader() {
       if (e.ctrlKey || e.metaKey) {
         if (e.key === "Enter") {
           e.preventDefault();
-          openComposer();
+          openComposer("note");
         }
         return;
       }
       if (e.altKey) return;
       if (e.key === "e" || e.key === "E") {
         e.preventDefault();
-        openComposer();
+        openComposer("note");
+        return;
+      }
+      if (e.key === "q" || e.key === "Q") {
+        e.preventDefault();
+        openComposer("question");
+        return;
+      }
+      if (e.key === "h" || e.key === "H") {
+        e.preventDefault();
+        void toggleHighlight();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [draft, openComposer]);
+  }, [draft, openComposer, toggleHighlight]);
 
   async function save(v: { title: string; body: string; source: Entry["source"] }) {
     if (!draft) return;
@@ -242,6 +305,7 @@ export default function Reader() {
     }
     await saveEntry({
       bookId,
+      kind: draft.kind,
       title: v.title,
       body: v.body,
       anchor: draft.anchor,
@@ -562,7 +626,7 @@ export default function Reader() {
             ) : (
               <JournalPane
                 entries={sorted}
-                onNew={() => setDraft({ anchor: { kind: "free" } })}
+                onNew={() => setDraft({ kind: "note", anchor: { kind: "free" } })}
                 onJump={jumpToEntry}
               />
             )}

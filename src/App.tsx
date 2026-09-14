@@ -6,6 +6,7 @@ import { db } from "./lib/db";
 import { localDayKey, streakFrom } from "./lib/dates";
 import Dashboard from "./routes/Dashboard";
 import Library from "./routes/Library";
+import Questions from "./routes/Questions";
 import Reader from "./routes/Reader";
 import RepoStatus from "./components/RepoStatus";
 
@@ -22,13 +23,22 @@ export default function App() {
     if (entries !== undefined) setReady(true);
   }, [entries]);
 
+  /* A highlight is not a day's writing — it costs one keystroke and saying it
+     kept a streak alive would make the streak worth nothing. */
   const streak = useMemo(() => {
     if (!entries) return 0;
-    return streakFrom(new Set(entries.map((e) => localDayKey(e.createdAt))));
+    const written = entries.filter((e) => e.kind !== "highlight");
+    return streakFrom(new Set(written.map((e) => localDayKey(e.createdAt))));
   }, [entries]);
+
+  const openQuestions = useMemo(
+    () => (entries ?? []).filter((e) => e.kind === "question" && e.status !== "answered").length,
+    [entries],
+  );
 
   const isDashboard = pathname === "/";
   const isLibrary = pathname.startsWith("/library");
+  const isQuestions = pathname.startsWith("/questions");
   const streakLabel = streak === 0 ? "no entries yet" : `${streak} day streak`;
 
   return (
@@ -90,6 +100,18 @@ export default function App() {
         >
           Library
         </div>
+        <div
+          onClick={() => navigate("/questions")}
+          style={{
+            fontSize: 12,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+            color: isQuestions ? "var(--color-accent)" : "var(--color-text)",
+          }}
+        >
+          Questions{openQuestions > 0 ? ` ${openQuestions}` : ""}
+        </div>
         <RepoStatus />
         <div
           style={{
@@ -106,6 +128,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/library" element={<Library />} />
+          <Route path="/questions" element={<Questions />} />
           <Route path="/book/:bookId" element={<Reader />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -23,6 +23,13 @@ const SCHEMA = {
   meta: "key",
 };
 
+/* v3 added highlights and questions alongside notes, so entries are queried
+   by kind and questions by whether they are still open. */
+const SCHEMA_V3 = {
+  ...SCHEMA,
+  entries: "id, bookId, createdAt, ref, kind, status",
+};
+
 db.version(1).stores(SCHEMA);
 
 /* v2 moved off Drive. A book's remote handle used to be a Drive file id and
@@ -45,6 +52,19 @@ db.version(2)
       .where("key")
       .startsWith("drive.")
       .delete();
+  });
+
+/* v3 gave every entry a kind. Everything written before there was anything
+   else to write was a note. */
+db.version(3)
+  .stores(SCHEMA_V3)
+  .upgrade(async (tx) => {
+    await tx
+      .table("entries")
+      .toCollection()
+      .modify((e: Record<string, unknown>) => {
+        if (e.kind === undefined) e.kind = "note";
+      });
   });
 
 export { db };

@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/* Push to talk: hold the control, speak, release. The transcript streams into
-   the body as it arrives and is stored exactly as it comes back — no
-   auto-punctuation, no tidying. A silent rewrite would eventually change
-   something that was meant.
+/* Press to talk: press once, speak for as long as you like, press again to
+   stop. Holding a button down for the length of a thought is a thing you
+   notice doing, and noticing it is the opposite of what dictation is for.
+
+   The transcript streams into the body as it arrives and is stored exactly as
+   it comes back — no auto-punctuation, no tidying. A silent rewrite would
+   eventually change something that was meant.
 
    On-device processing is requested first, so the audio does not leave the
    machine. Where the browser has no local model the request fails and
@@ -63,7 +66,7 @@ export function useSpeech(onChunk: (text: string) => void): SpeechState {
   useEffect(() => {
     const C = ctor();
     if (!C) return;
-    /* Asking for the on-device model up front means the first hold does not
+    /* Asking for the on-device model up front means the first press does not
        stall on a download. */
     void C.install?.({ langs: ["en-US"], processLocally: true }).catch(() => undefined);
     return () => {
