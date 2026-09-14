@@ -81,4 +81,39 @@ a:hover { color: var(--color-accent-700); }
 /* Page mode: the PDF drawn to canvas, in the same card the reflow mode uses. */
 .page-canvas { display: block; width: 100%; height: auto; }
 
+/* The selectable text over a drawn page. pdf.js positions each span as a
+   percentage of the page and sizes it in `calc(var(--scale-factor) * Npx)`,
+   so the card sets --scale-factor to drawn width ÷ the page's own width and
+   the spans track it through a resize. The text is transparent: the ink you
+   read is the canvas underneath, and this only gives the cursor something to
+   take hold of. */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 1;
+}
+
+.textLayer span,
+.textLayer br {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer ::selection {
+  background: color-mix(in srgb, var(--color-accent) 34%, transparent);
+}
+
+/* A line break between spans is structure, not something to paint. */
+.textLayer br::selection { background: transparent; }
+
 .spin { animation: breathe 1.6s ease-in-out infinite; }

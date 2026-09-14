@@ -10,4 +10,8 @@ export function openPdf(data: ArrayBuffer): Promise<PDFDocumentProxy> {
   return pdfjs.getDocument({ data: data.slice(0) }).promise;
 }
 
+/* The layer of transparent, positioned spans that makes a drawn page
+   selectable. Same class the Firefox viewer uses. */
+export { TextLayer } from "pdfjs-dist";
+
 export type { PDFDocumentProxy };

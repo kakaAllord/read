@@ -49,7 +49,7 @@ books/
       notes.md                    everything written about it
   detective/
     the-hound-of-the-baskervilles/
-      the-hound-of-the-baskervilles.epub
+      the-hound-of-the-baskervilles.pdf
       notes.md
 journal/
   2026-09.md                      entries not tied to a book
@@ -67,12 +67,20 @@ on the shelf but leaves the files where they were put.
 fields in an HTML comment above the body so it can be read back in; the body
 below is exactly as it was written.
 
-**Nothing is written until you press Save.** Everything you do lands in
-IndexedDB immediately and stays there; the header keeps a count of what is
-waiting — `Save 3` — and pressing it is the only thing in the app that writes to
-the repo. No timers, no writes on a scroll, nothing on the way out of the tab. A
-commit should be one you decided to make, and reading a book should not produce
-a hundred of them.
+**A book is pushed when you add it. Notes wait for Save.** The file is the one
+thing here that cannot be written again from memory, so it goes up with the
+catalog as soon as the Add dialog closes — there is nothing to decide about
+whether to keep a book you just chose.
+
+Everything written *about* a book is the opposite. It lands in IndexedDB
+immediately and stays there; the header keeps a count of what is waiting —
+`Save 3` — and pressing it is what puts it in the repo. No timers, no writes on
+a scroll, nothing on the way out of the tab. A note should be a commit you
+decided to make, and reading should not produce a hundred of them.
+
+If the push fails — offline, a lapsed token, a file over the ceiling — the book
+is still added and still readable, and it joins that same queue instead. The
+count in the header is what tells you.
 
 What is waiting is remembered across reloads, so closing the tab with work
 pending loses nothing but the pushing of it.
@@ -103,7 +111,7 @@ src/
   routes/         Dashboard, Library, Reader — the three screens
   components/     the pieces those screens are built from
   lib/
-    text/         PDF and EPUB extraction, view-mode detection, covers
+    text/         PDF extraction, view-mode detection, covers
     github/       config, the Contents API client, repo paths
     sync.ts       what gets written up, when, and what comes back down
     journalFile.ts  the markdown entries are rendered to and parsed from
@@ -131,7 +139,7 @@ with no structure. `lib/text/pdfExtract.ts` groups them into lines, takes the
 book's median line gap, left edge and glyph height, and starts a paragraph on a
 gap over 1.4× the median, an indent, or a short previous line. It de-hyphenates
 line breaks, strips running heads and folios, and treats oversized lines as
-headings. EPUB skips all of this — it is already semantic HTML.
+headings.
 
 **Sync.** IndexedDB is the working copy the interface reads from and writes to;
 the repo is where that is put when you say so. A book is one file, so saving

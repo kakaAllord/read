@@ -72,7 +72,6 @@ Also support starting a free-standing entry with no selection.
 type Book = {
   id: string;
   driveFileId: string;
-  format: "pdf" | "epub";
   viewMode: "reflow" | "page";   // decided at import, user-overridable
   title: string;
   author?: string;
@@ -139,8 +138,6 @@ The mockup does **not** display PDF pages. It extracts the text and re-sets it i
 7. Normalize ligatures (ﬁ, ﬂ) and smart quotes.
 
 **Page numbers become display-only.** Once text reflows, "page 612" is a label derived from the source, not a position. Anchors must not depend on it.
-
-**Accept EPUB as well as PDF.** EPUB is already semantic HTML and CSS: real paragraphs, real headings, real italics, real chapter boundaries. Every problem in this section disappears for EPUB files, and the app's typography applies cleanly because that's what EPUB is designed for. Many books are available in both formats. Import EPUB via `epubjs`, or by unzipping and parsing the spine directly. PDF remains the fallback for what only exists as PDF.
 
 **No backend.** Google Identity Services issues a browser-side access token; the Drive REST API supports CORS and is called directly.
 

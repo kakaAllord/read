@@ -37,9 +37,9 @@ export function bookDir(genre: string, title: string, n = 0): string {
   return `${genreDir(genre)}/${slug(title)}${suffix}`;
 }
 
-export function bookPath(genre: string, title: string, format: string, n = 0): string {
+export function bookPath(genre: string, title: string, n = 0): string {
   const dir = bookDir(genre, title, n);
-  return `${dir}/${dir.split("/").pop()}.${format}`;
+  return `${dir}/${dir.split("/").pop()}.pdf`;
 }
 
 export function notesPath(dir: string): string {

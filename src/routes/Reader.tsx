@@ -9,7 +9,7 @@ import { labelFor, loadBookBytes, loadBookText, rememberLocation, saveEntry } fr
 import { openPdf, type PDFDocumentProxy } from "../lib/text/pdf";
 import { clock, useFocus, BREAK_SECONDS, WORK_SECONDS } from "../hooks/useFocus";
 import { usePrefs } from "../hooks/usePrefs";
-import type { Anchor, BookText, Entry } from "../lib/types";
+import type { BookText, Entry } from "../lib/types";
 
 import BookPageCard, { type Mark } from "../components/BookPane";
 import PdfPageCard from "../components/PdfPageCard";
@@ -53,7 +53,7 @@ export default function Reader() {
      the live query hands back a fresh object several times a minute. These
      effects therefore hang off the identity of the *file*, not the record;
      depending on `book` would re-extract the whole text on every scroll. */
-  const identity = book ? `${book.id}|${book.format}|${book.fileKey}` : "";
+  const identity = book ? `${book.id}|${book.fileKey}` : "";
   const viewMode = book?.viewMode;
   const bookRef = useRef(book);
   bookRef.current = book;
@@ -78,7 +78,7 @@ export default function Reader() {
 
   useEffect(() => {
     const current = bookRef.current;
-    if (!current || viewMode !== "page" || current.format !== "pdf") return;
+    if (!current || viewMode !== "page") return;
     let live = true;
     loadBookBytes(current)
       .then(openPdf)
@@ -200,10 +200,17 @@ export default function Reader() {
         displayLocation: labelFor(text, offset),
       });
     } else {
-      setDraft({ anchor: { kind: "free" } as Anchor });
+      /* Nothing selected, or a scan with no text to select. The entry is
+         still pinned to the page in view and labelled with it, so writing
+         about a page you cannot select a word on still comes back here. */
+      const offset = text.pages[pageIndex]?.offset ?? 0;
+      setDraft({
+        anchor: { kind: "location", bookId, offset },
+        displayLocation: labelFor(text, offset),
+      });
     }
     window.getSelection()?.removeAllRanges();
-  }, [bookId, text]);
+  }, [bookId, text, pageIndex]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -505,11 +512,12 @@ export default function Reader() {
                   onVisible={onVisible}
                 >
                   {(i) =>
-                    book.viewMode === "page" && book.format === "pdf" ? (
+                    book.viewMode === "page" ? (
                       <PdfPageCard
                         pdf={pdf}
                         pageNumber={Number(text.pages[i].number) || i + 1}
                         running={text.pages[i].running}
+                        offset={text.pages[i].offset}
                       />
                     ) : (
                       <BookPageCard page={text.pages[i]} marks={marks} />

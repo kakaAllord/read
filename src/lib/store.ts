@@ -5,18 +5,17 @@ import { parseRef } from "./bibleRefs";
 import { pageAt, resolveAnchor } from "./anchors";
 import { openPdf } from "./text/pdf";
 import { extractPdf } from "./text/pdfExtract";
-import { extractEpub } from "./text/epubExtract";
 import { detectMode, type ModeVerdict } from "./text/modeDetect";
 import { coverFromPdf } from "./text/cover";
 import { cacheBook, cachedBook } from "./cache";
 import { pathOf } from "./github/paths";
-import { fetchBook, markBookChanged, markLibraryChanged, noteEntrySaved } from "./sync";
-import type { Anchor, Book, BookFormat, BookText, Entry } from "./types";
+import { fetchBook, markBookChanged, markLibraryChanged, noteEntrySaved, pushNewBook } from "./sync";
+import { connected } from "./github/config";
+import type { Anchor, Book, BookText, Entry } from "./types";
 
 export type Probe = {
   bytes: ArrayBuffer;
   fileName: string;
-  format: BookFormat;
   title: string;
   author?: string;
   pageCount: number;
@@ -27,7 +26,7 @@ export type Probe = {
 
 function titleFromFileName(name: string): string {
   return name
-    .replace(/\.(pdf|epub)$/i, "")
+    .replace(/\.pdf$/i, "")
     .replace(/[_]+/g, " ")
     .replace(/-+/g, " ")
     .replace(/\s+/g, " ")
@@ -35,10 +34,8 @@ function titleFromFileName(name: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function formatOf(name: string, mime?: string): BookFormat | null {
-  if (/\.epub$/i.test(name) || mime === "application/epub+zip") return "epub";
-  if (/\.pdf$/i.test(name) || mime === "application/pdf") return "pdf";
-  return null;
+export function isPdf(name: string, mime?: string): boolean {
+  return /\.pdf$/i.test(name) || mime === "application/pdf";
 }
 
 /**
@@ -51,35 +48,9 @@ export async function probeFile(
   fileName: string,
   onProgress?: (fraction: number, label: string) => void,
 ): Promise<Probe> {
-  const format = formatOf(fileName, file.type);
-  if (!format) throw new Error("That is not a PDF or an EPUB.");
+  if (!isPdf(fileName, file.type)) throw new Error("That is not a PDF.");
   const bytes = await file.arrayBuffer();
   const bookId = newId("b");
-
-  if (format === "epub") {
-    onProgress?.(0.3, "Reading the spine");
-    const { text, meta } = await extractEpub(bytes, bookId);
-    onProgress?.(1, "Ready");
-    return {
-      bytes,
-      fileName,
-      format,
-      title: meta.title || titleFromFileName(fileName),
-      author: meta.author,
-      pageCount: text.pages.length,
-      coverDataUrl: meta.coverDataUrl,
-      text,
-      verdict: {
-        mode: "reflow",
-        reason:
-          "EPUB carries its own paragraphs, headings and chapters, so the text is re-set in the app typography.",
-        avgChars: 0,
-        textPages: text.pages.length,
-        sampled: text.pages.length,
-        columns: 1,
-      },
-    };
-  }
 
   onProgress?.(0.05, "Opening the file");
   const pdf = await openPdf(bytes);
@@ -100,7 +71,6 @@ export async function probeFile(
   return {
     bytes,
     fileName,
-    format,
     title: metaTitle && metaTitle.length > 1 ? metaTitle : titleFromFileName(fileName),
     author: metaAuthor && metaAuthor.length > 1 ? metaAuthor : undefined,
     pageCount: pdf.numPages,
@@ -120,17 +90,12 @@ export async function commitBook(
   const title = fields.title.trim() || probe.title;
   const genre = (fields.genre.trim() || "unfiled").toLowerCase();
 
-  /* Nothing is uploaded here. The book is kept in this browser and marked as
-     waiting; pressing Save is what puts it in the repo, under the genre it
-     was given. */
   const key = `local:${probe.text.bookId}`;
   await cacheBook(key, probe.bytes);
-  onProgress?.(1);
 
   const book: Book = {
     id: probe.text.bookId,
     fileKey: key,
-    format: probe.format,
     viewMode: probe.verdict.mode,
     title,
     author: fields.author.trim() || probe.author,
@@ -143,6 +108,21 @@ export async function commitBook(
 
   await db.books.put(book);
   await db.texts.put(probe.text);
+
+  /* The file goes up now, under the genre it was just given. Only the notes
+     written about it later wait for Save. */
+  if (connected()) {
+    try {
+      book.fileKey = await pushNewBook(book, probe.bytes, onProgress);
+      return book;
+    } catch {
+      /* Offline, a lapsed token, or a file over the ceiling. The book is
+         already in this browser and readable; it joins the queue instead, and
+         the count in the header is what says so. */
+    }
+  }
+
+  onProgress?.(1);
   markBookChanged(book.id);
   markLibraryChanged();
   return book;
@@ -154,13 +134,8 @@ export async function loadBookText(book: Book): Promise<BookText> {
   if (stored) return stored;
 
   const bytes = await loadBookBytes(book);
-  let text: BookText;
-  if (book.format === "epub") {
-    text = (await extractEpub(bytes, book.id)).text;
-  } else {
-    const pdf = await openPdf(bytes);
-    text = await extractPdf(pdf, book.id);
-  }
+  const pdf = await openPdf(bytes);
+  const text = await extractPdf(pdf, book.id);
   await db.texts.put(text);
   return text;
 }

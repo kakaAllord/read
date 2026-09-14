@@ -1,10 +1,8 @@
 export type ViewMode = "reflow" | "page";
-export type BookFormat = "pdf" | "epub";
 
 export type Book = {
   id: string;
   fileKey: string; // "gh:books/faith/mere-christianity.pdf", or "local:<id>"
-  format: BookFormat;
   viewMode: ViewMode;
   title: string;
   author?: string;
@@ -44,9 +42,9 @@ export type Entry = {
   updatedAt: string;
 };
 
-/* A page of reconstructed text. One per source PDF page; for EPUB, one per
-   slice of a spine item. `offset` is the character index of this page's first
-   character in the book's normalized full text. */
+/* A page of reconstructed text, one per source PDF page. `offset` is the
+   character index of this page's first character in the book's normalized
+   full text. */
 export type BookPage = {
   index: number;
   number: number | string; // the label printed in the running head

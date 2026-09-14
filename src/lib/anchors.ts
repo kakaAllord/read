@@ -1,3 +1,4 @@
+import { normalizeText } from "./text/normalize";
 import type { Anchor, BookText } from "./types";
 
 export const CONTEXT = 30;
@@ -26,6 +27,22 @@ function indexWithin(root: HTMLElement, node: Node, offset: number): number {
   return n;
 }
 
+/* A selection made over a drawn page comes straight off the glyph runs: it
+   still has the ligatures, the smart quotes and the hyphens the extraction
+   folded away, so it is put through the same normalization before it is
+   looked for. A reflowed selection is already normalized and passes through
+   this unchanged. */
+function cleanSelection(raw: string): string {
+  return normalizeText(raw.replace(/\s+/g, " ")).trim();
+}
+
+/* The extraction joins a word broken across two lines. In a selection that
+   break survives as "trans- formation" — a real compound has no space after
+   its hyphen, so the two cases stay apart. */
+function dehyphenate(s: string): string {
+  return s.replace(/([A-Za-z])-\s+([a-z])/g, "$1$2");
+}
+
 /**
  * Turn the live selection into a quote anchor. Returns null when the
  * selection is empty or falls outside the book pane.
@@ -37,8 +54,7 @@ export function anchorFromSelection(
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
 
-  const raw = sel.toString();
-  const exact = raw.replace(/\s+/g, " ").trim();
+  const exact = cleanSelection(sel.toString());
   if (!exact) return null;
 
   const range = sel.getRangeAt(0);
@@ -47,23 +63,41 @@ export function anchorFromSelection(
 
   const base = Number(el.getAttribute(OFFSET_ATTR));
   const within = indexWithin(el, range.startContainer, range.startOffset);
-  let offset = base + within;
+  const near = base + within;
 
-  /* The DOM index is close but not exact — the block's rendered text can
-     differ from the normalized text by collapsed whitespace. Snap to the
-     nearest real occurrence. */
-  const found = findNear(text.fullText, exact, offset);
-  if (found >= 0) offset = found;
+  /* The DOM index is close but not exact — rendered text differs from the
+     normalized text by collapsed whitespace, and over a drawn page the spans
+     carry no offsets of their own at all. Snap to the nearest real
+     occurrence, and keep whichever spelling of the quote was the one found,
+     because that is what has to be findable again years from now. */
+  let offset = -1;
+  let quote = exact;
+  for (const candidate of [exact, dehyphenate(exact)]) {
+    const found = findNear(text.fullText, candidate, near);
+    if (found >= 0) {
+      offset = found;
+      quote = candidate;
+      break;
+    }
+  }
+
+  /* Nothing matched: a scan with a crooked text layer, or an extraction that
+     dropped what was selected. `near` is still the page the selection was
+     made on, so the entry lands in the right place even when the quote itself
+     cannot be re-found. */
+  if (offset < 0) {
+    return { exact, anchor: { kind: "location", bookId, offset: near } };
+  }
 
   return {
-    exact,
+    exact: quote,
     anchor: {
       kind: "quote",
       bookId,
       offset,
-      exact,
+      exact: quote,
       prefix: text.fullText.slice(Math.max(0, offset - CONTEXT), offset),
-      suffix: text.fullText.slice(offset + exact.length, offset + exact.length + CONTEXT),
+      suffix: text.fullText.slice(offset + quote.length, offset + quote.length + CONTEXT),
     },
   };
 }

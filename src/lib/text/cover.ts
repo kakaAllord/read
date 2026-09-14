@@ -22,21 +22,3 @@ export async function coverFromPdf(pdf: PDFDocumentProxy): Promise<string | unde
     return undefined;
   }
 }
-
-/** EPUBs carry their cover as a file in the archive; it only needs shrinking. */
-export async function coverFromImageBlob(blob: Blob): Promise<string | undefined> {
-  try {
-    const bitmap = await createImageBitmap(blob);
-    const scale = COVER_W / bitmap.width;
-    const canvas = document.createElement("canvas");
-    canvas.width = COVER_W;
-    canvas.height = Math.round(bitmap.height * scale);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return undefined;
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    return canvas.toDataURL("image/jpeg", 0.72);
-  } catch {
-    return undefined;
-  }
-}

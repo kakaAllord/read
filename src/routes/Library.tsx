@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 
 import { db } from "../lib/db";
-import { formatOf, type Progress } from "../lib/store";
+import { isPdf, type Progress } from "../lib/store";
 import AddBookDialog from "../components/AddBookDialog";
 import BookPlate from "../components/BookPlate";
 
@@ -51,8 +51,8 @@ export default function Library() {
 
   function accept(file: File | undefined) {
     if (!file) return;
-    if (!formatOf(file.name, file.type)) {
-      setError(`${file.name} is not a PDF or an EPUB.`);
+    if (!isPdf(file.name, file.type)) {
+      setError(`${file.name} is not a PDF.`);
       return;
     }
     setError(null);
@@ -111,7 +111,7 @@ export default function Library() {
         <input
           ref={input}
           type="file"
-          accept=".pdf,.epub,application/pdf,application/epub+zip"
+          accept=".pdf,application/pdf"
           style={{ display: "none" }}
           onChange={(e) => {
             accept(e.target.files?.[0]);
@@ -134,7 +134,7 @@ export default function Library() {
           }}
         >
           <div style={{ fontFamily: "var(--font-heading)", fontSize: 19 }}>
-            {dragging ? "Release to add this book" : "Drop a PDF or EPUB anywhere on this page"}
+            {dragging ? "Release to add this book" : "Drop a PDF anywhere on this page"}
           </div>
           <div style={{ fontSize: 12, color: muted(55), marginTop: 5 }}>
             The cover is rendered from page one. Title and author are read from the file where

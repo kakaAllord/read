@@ -1,7 +1,7 @@
 import { db, getMeta, setMeta } from "./db";
 import { cacheBook, cachedBook, dropBook } from "./cache";
 import { monthKey } from "./dates";
-import type { Book, BookFormat, Entry } from "./types";
+import type { Book, Entry } from "./types";
 import { exists, getBytes, list, putBinary, readText, writeText } from "./github/api";
 import { connected } from "./github/config";
 import {
@@ -26,11 +26,14 @@ import { renderEntries, parseEntries } from "./journalFile";
                           version of this app wrote
 
     IndexedDB is what the interface reads and writes, always, immediately.
-    The repo is where it is put when you say so — nothing is committed on a
-    timer, on a scroll, or on the way out of the tab, because a commit should
-    be something you decided to make. What is waiting is remembered across
-    reloads, so closing the tab with work pending loses nothing but the
-    pushing of it. */
+
+    A book is pushed as soon as it is added: the file is the one thing here
+    that cannot be written again from memory. Everything written *about* a
+    book waits for Save — nothing is committed on a timer, on a scroll, or on
+    the way out of the tab, because a note is something you decided to make
+    and a commit should be too. What is waiting is remembered across reloads,
+    so closing the tab with work pending loses nothing but the pushing of
+    it. */
 
 /* GitHub blocks a push over 100MB and warns over 50. The Contents API also
    carries the file as base64 in one JSON body, which is a third larger
@@ -128,9 +131,9 @@ export function markLibraryChanged(): void {
 
 /** The first folder in the genre that is not taken. Two books with the same
     title under the same genre get -2, -3, the way a person would. */
-async function freeDir(genre: string, title: string, format: BookFormat): Promise<number> {
+async function freeDir(genre: string, title: string): Promise<number> {
   for (let n = 0; n < 50; n++) {
-    if (!(await exists(bookPath(genre, title, format, n)))) return n;
+    if (!(await exists(bookPath(genre, title, n)))) return n;
   }
   throw new Error(`There are already 50 books called "${title}" under ${genreDir(genre)}.`);
 }
@@ -146,14 +149,48 @@ async function uploadBook(
       `"${book.title}" is ${mb}MB. GitHub will not take a file over about 45MB through the API, so it cannot go in the repo — a compressed copy will.`,
     );
   }
-  const n = await freeDir(book.genre, book.title, book.format);
-  const path = bookPath(book.genre, book.title, book.format, n);
+  const n = await freeDir(book.genre, book.title);
+  const path = bookPath(book.genre, book.title, n);
   await putBinary(path, bytes, `Add ${book.title} to ${book.genre}`, onProgress);
   return keyFor(path);
 }
 
 export function fetchBook(path: string): Promise<ArrayBuffer> {
   return getBytes(path);
+}
+
+/**
+ * A book goes into the repo the moment it is added, and does not wait for
+ * Save. The file is the one thing here that cannot be written again from
+ * memory, so leaving it in a browser cache until you remember to press
+ * something is the wrong default. Notes are the opposite: those are yours to
+ * decide on, and they keep waiting.
+ *
+ * The catalog is rewritten in the same breath, because a book in the repo
+ * that `library.json` does not mention is not findable from another device.
+ */
+export async function pushNewBook(
+  book: Book,
+  bytes: ArrayBuffer,
+  onProgress?: (fraction: number) => void,
+): Promise<string> {
+  if (!active()) throw new Error("No repository is connected.");
+  setState("syncing");
+  try {
+    const key = await uploadBook(book, bytes, onProgress);
+    await cacheBook(key, bytes);
+    await dropBook(book.fileKey);
+    await db.books.update(book.id, { fileKey: key });
+    await writeLibrary();
+    pendingLibrary = false;
+    await persist();
+    announce();
+    setState("idle");
+    return key;
+  } catch (err) {
+    setState("error", message(err));
+    throw err;
+  }
 }
 
 /* — writing what is pending — */
